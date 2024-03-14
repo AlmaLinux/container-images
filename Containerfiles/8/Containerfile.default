@@ -1,0 +1,4 @@
+# Tags: 8, 8.9, 8.9-20231124
+FROM quay.io/almalinuxorg/almalinux:8.9-20231124
+
+CMD ["/bin/bash"]

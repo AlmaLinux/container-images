@@ -1,0 +1,4 @@
+# Tags: latest, 9, 9.3, 9.3-20231124
+FROM quay.io/almalinuxorg/almalinux:9.3-20231124
+
+CMD ["/bin/bash"]

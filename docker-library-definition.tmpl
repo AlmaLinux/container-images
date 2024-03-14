@@ -1,0 +1,5 @@
+Tags: {{ .tags }}
+GitFetch: refs/heads/docker-library
+GitCommit: {{ .commit_hash }}
+File: Containerfiles/{{ .version_major }}/Containerfile.{{ .image_type }}
+Architectures: amd64, arm64v8, ppc64le, s390x
