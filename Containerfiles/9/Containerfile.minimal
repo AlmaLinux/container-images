@@ -1,0 +1,4 @@
+# Tags: minimal, 9-minimal, 9.3-minimal, 9.3-minimal-20231124
+FROM quay.io/almalinuxorg/9-minimal:9.3-20231124
+
+CMD ["/bin/bash"]
