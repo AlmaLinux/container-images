@@ -1,0 +1,327 @@
+name: Build, test and push to the Client Library
+
+on:
+  workflow_dispatch:
+      inputs:
+        production:
+          description: |
+            'Push to production registries'
+            'not checked - to testing'
+          required: true
+          type: boolean
+          default: false
+
+        version_major:
+          description: 'AlmaLinux major version'
+          required: true
+          default: '9'
+          type: choice
+          options:
+            - 9
+            - 8
+
+        type_default:
+          description: 'default'
+          required: true
+          type: boolean
+          default: true
+
+        type_minimal:
+          description: 'minimal'
+          required: true
+          type: boolean
+          default: true
+
+        type_micro:
+          description: 'micro'
+          required: true
+          type: boolean
+          default: true
+
+        type_base:
+          description: 'base'
+          required: true
+          type: boolean
+          default: true
+
+        type_init:
+          description: 'init'
+          required: true
+          type: boolean
+          default: true
+
+env:
+  # Latest version
+  version_latest: 9
+
+  # Platforms list: linux/amd64, linux/ppc64le, linux/s390x, linux/arm64
+  platforms: 'linux/amd64, linux/ppc64le, linux/s390x, linux/arm64'
+
+  # Registries list
+  # production: docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux
+  # testing: quay.io/almalinuxautobot
+  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot' }}
+
+jobs:
+  build:
+    name: Deploy ${{ inputs.version_major }} ${{ matrix.image_types }} images
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Set image types matrix based on boolean inputs.type_* with true value
+        image_types: ${{ fromJSON(format('["{0}", "{1}", "{2}", "{3}", "{4}"]', ( inputs.type_default && 'default' ), ( inputs.type_minimal && 'minimal' ), ( inputs.type_micro && 'micro' ), ( inputs.type_base && 'base' ), ( inputs.type_init && 'init' ) )) }}
+        exclude:
+          - image_types: 'false'
+
+    steps:
+
+      -
+        name: Prepare AlmaLinux Minor version number
+        run: |
+          case ${{ inputs.version_major }} in
+            8)
+              version_minor="9" ;;
+            9)
+              version_minor="3"  ;;
+            10)
+              version_minor="0" ;;
+            *)
+              echo "Almalinux ${{ inputs.version_major }} is not supported!" && false
+          esac
+          echo "version_minor=${version_minor}" >> $GITHUB_ENV
+
+          # [Debug]
+          echo "version_minor=${version_minor}"
+
+      -
+        name: Prepare date stamp
+        id: date_stamp
+        run: |
+          # date stamp
+          date_stamp=$(date -u '+%Y%m%d')
+          echo "date_stamp=${date_stamp}" >> $GITHUB_ENV
+          echo "date_stamp=${date_stamp}" >> "$GITHUB_OUTPUT"
+          [ -z "$date_stamp-x" ] && false
+
+          # [Debug]
+          echo "date_stamp=${date_stamp}"
+
+      -
+        name: Generate list of images to use as base name for tags
+        run: |
+          # list of registries to push to
+          REGISTRIES="${{ env.registries }}"
+
+          IMAGE_NAMES=
+          # generate image names in format $REGISTRY/almalinux or $REGISTRY/${{ inputs.version_major }}-${{ matrix.image_types }}
+          # image names are used by docker/metadata-action to set 'images'
+          for REGISTRY in ${REGISTRIES//,/ }; do
+            # 'default' images should not go to docker.io
+            [ "${{ matrix.image_types }}" = "default" ] && [[ $REGISTRY = *'docker.io'* ]] && continue
+
+            # 'default' images goes to $REGISTRY/almalinux
+            [ "${{ matrix.image_types }}" = "default" ] \
+              && IMAGE_NAME="$REGISTRY/almalinux" \
+              || IMAGE_NAME="$REGISTRY/${{ inputs.version_major }}-${{ matrix.image_types }}"
+            IMAGE_NAMES="${IMAGE_NAMES} ${IMAGE_NAME}"
+            unset IMAGE_NAME
+          done
+
+          # remove space at the beginning of string
+          IMAGE_NAMES=${IMAGE_NAMES# }
+          # separate with comma instead of space and export to the action
+          echo "IMAGE_NAMES=${IMAGE_NAMES// /,}" >> $GITHUB_ENV
+
+          # [Debug]
+          echo $IMAGE_NAMES
+
+      -
+        name: Enable containerd image store on Docker Engine
+        run: |
+          # Use containerd image store
+          sudo jq '.features |= . + { "containerd-snapshotter": true }' /etc/docker/daemon.json > ./daemon.json.${{ env.date_stamp }} && \
+          sudo mv -f ./daemon.json.${{ env.date_stamp }} /etc/docker/daemon.json
+          sudo systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
+
+      -
+        name: Checkout ${{ github.repository }}, branch 'main'
+        uses: actions/checkout@v4
+
+      -
+        name: Checkout ${{ github.repository }}, branch 'docker-library', path 'docker-library'
+        uses: actions/checkout@v4
+        with:
+          ref: docker-library
+          path: docker-library
+
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      -
+        name: Login to Docker.io
+        if: contains(env.registries, 'docker.io')
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ inputs.production && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
+          password: ${{ inputs.production && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
+
+      -
+        name: Login to Quay.io
+        if: contains(env.registries, 'quay.io')
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ inputs.production && secrets.QUAY_IO_USERNAME || secrets.TEST_QUAY_IO_USERNAME }}
+          password: ${{ inputs.production && secrets.QUAY_IO_CLI_PASSWORD || secrets.TEST_QUAY_IO_CLI_PASSWORD }}
+
+      -
+        name: Login to Ghcr.io
+        if: contains(env.registries, 'ghcr.io')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ inputs.production && secrets.GIT_HUB_USERNAME || secrets.TEST_GITHUB_USERNAME }}
+          password: ${{ inputs.production && secrets.GIT_HUB_TOKEN || secrets.TEST_GITHUB_TOKEN }}
+
+      -
+        name: Generate tags and prepare metadata to build and push
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # list of Docker images to use as base names for tags
+          images: ${{ env.IMAGE_NAMES }}
+
+          # list of tags
+          tags: |
+            type=raw,value=latest,enable=${{ matrix.image_types != 'default' || ( matrix.image_types == 'default' && inputs.version_major == env.version_latest ) }}
+            type=raw,value=${{ inputs.version_major }},enable=true
+            type=raw,value=${{ inputs.version_major }}.${{ env.version_minor }},enable=true
+            type=raw,value=${{ inputs.version_major }}.${{ env.version_minor }}-${{ env.date_stamp }},enable=true
+
+      -
+        name: Build images
+        id: build-images
+        uses: docker/build-push-action@v5
+        with:
+          provenance: false
+          context: "{{defaultContext}}:Containerfiles/${{ inputs.version_major }}"
+          file: ./Containerfile.${{ matrix.image_types }}
+          platforms: ${{ env.platforms }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+      -
+        name: Test images
+        id: test-images
+        run: |
+          # [Test]
+          platforms="${{ env.platforms }}"
+          for platform in ${platforms//,/ }; do
+            echo "Testing AlmaLinux ${{ inputs.version_major }} ${{ matrix.image_types }} for ${platform} image:"
+
+            docker run --platform=${platform} ${{ steps.build-images.outputs.digest }} /bin/bash -c " \
+            uname -m \
+            && cat /etc/almalinux-release \
+            && ( test "${{ matrix.image_types }}" != "micro" && rpm -q gpg-pubkey) || true "
+          done
+
+      -
+        name: Push images to Client Library
+        id: push-images
+        uses: docker/build-push-action@v5
+        with:
+          provenance: false
+          context: "{{defaultContext}}:Containerfiles/${{ inputs.version_major }}"
+          file: ./Containerfile.${{ matrix.image_types }}
+          platforms: ${{ env.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+      # Change date stamp in 'docker-library/Containerfiles/*/Containerfile.*'
+      -
+        name: Change date stamp in Containerfile (default and minimal only)
+        # 'default' or 'minimal' images only go to Docker Official Library
+        if: matrix.image_types == 'default' || matrix.image_types == 'minimal'
+        run: |
+          containerfile=docker-library/Containerfiles/${{ inputs.version_major }}/Containerfile.${{ matrix.image_types }}
+
+          case ${{ matrix.image_types }} in
+            default)
+              tags="${{ inputs.version_major }}, ${{ inputs.version_major }}.${{ env.version_minor }}, ${{ inputs.version_major }}.${{ env.version_minor }}-${{ env.date_stamp }}"
+              [ "${{ inputs.version_major }}" = "9" ] && tags="latest, ${tags}" ;;
+            minimal)
+              tags="${{ inputs.version_major }}-${{ matrix.image_types }}, ${{ inputs.version_major }}.${{ env.version_minor }}-${{ matrix.image_types }}, ${{ inputs.version_major }}.${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }}"
+              [ "${{ inputs.version_major }}" = "9" ] && tags="minimal, ${tags}" ;;
+            *)
+          esac
+
+          # Tags: 8, 8.9, 8.9-20231124
+          sed -i "/^\([[:space:]]*#[[:space:]]*Tags: \).*/s//\1${tags}/" ${containerfile}
+
+          # FROM quay.io/almalinuxorg/almalinux:8.9-20231124
+          sed -i 's/^\([[:space:]]*FROM[[:space:]]\+.\+:\).\+$/\1${{ inputs.version_major }}.${{ env.version_minor }}-${{ env.date_stamp}}/' ${containerfile}
+
+          # [Debug]
+          cat ${containerfile}
+
+      # Upload changed 'Containerfiles/*/Containerfile.*'
+      -
+        name: Upload changed Containerfile (default and minimal only)
+        uses: actions/upload-artifact@v4
+        # 'default' or 'minimal' images only go to Docker Official Library
+        if: matrix.image_types == 'default' || matrix.image_types == 'minimal'
+        with:
+          name: containerfiles-${{ matrix.image_types }}
+          path: docker-library/Containerfiles/${{ inputs.version_major }}/Containerfile.${{ matrix.image_types }}
+
+    outputs:
+      date_stamp: ${{ steps.date_stamp.outputs.date_stamp }}
+
+  commit:
+    # 'default' or 'minimal' images only go to Docker Official Library
+    if: inputs.type_default || inputs.type_minimal
+    name: Collect and save changed Containerfile(s) used by Docker Official Library
+    runs-on: ubuntu-latest
+    needs:
+      - build
+    steps:
+
+      -
+        name: Checkout ${{ github.repository }}, branch 'docker-library'
+        uses: actions/checkout@v4
+        with:
+          ref: docker-library
+
+      # Download uploaded above 'Containerfiles/*/Containerfile.*'
+      -
+        name: Download changed Containerfiles
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: Containerfiles/${{ inputs.version_major }}
+
+      -
+        name: "[Debug] Print Containerfiles/${{ inputs.version_major }}/Containerfile.*"
+        run: |
+          # [Debug]
+          cat Containerfiles/${{ inputs.version_major }}/Containerfile.*
+
+      # Commit 'Containerfiles/*/Containerfile.*'
+      -
+        name: "Commit and push Containerfiles/${{ inputs.version_major }}/Containerfile.* changes"
+        # if 'Push to production' is checked
+        if: inputs.production
+        uses: EndBug/add-and-commit@v9
+        with:
+          default_author: user_info
+          new_branch: docker-library
+          message: "AlmaLinux ${{ inputs.version_major }} image built as of ${{ needs.build.outputs.date_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          push: true

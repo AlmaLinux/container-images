@@ -1,0 +1,223 @@
+name: Publish images to the Docker Library
+
+on:
+  workflow_dispatch:
+      inputs:
+        pr:
+          description: 'Publish to the Docker Official Library'
+          required: true
+          type: boolean
+          default: true
+
+        draft:
+          description: 'Draft Pull Request'
+          required: true
+          type: boolean
+
+env:
+  # Docker Library Git repository name (upstream): docker-library/official-images
+  docker_library: docker-library/official-images
+  # Docker Library Git repository name (local fork): ${{ github.actor }}/official-images or almalinux/docker-library-official-images
+  local_library: almalinux/docker-library-official-images
+
+jobs:
+  prepare-definitions:
+
+    name: "${{ matrix.version_major }} ${{ matrix.image_types }} definition preparing"
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        image_types:
+          - default
+          - minimal
+
+        version_major:
+          - 8
+          - 9
+
+    steps:
+      -
+        name: Checkout ${{ github.repository }}, branch 'docker-library'
+        uses: actions/checkout@v4
+        with:
+          ref: docker-library
+          fetch-depth: 0 # Checkout all commits
+
+      -
+        name: Checkout ${{ env.local_library }}, branch 'master'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.local_library }}
+          path: official-images
+
+      -
+        name: "Get need data for the definition"
+        run: |
+          # Containerfile for specific version and image type
+          containerfile=Containerfiles/${{ matrix.version_major }}/Containerfile.${{ matrix.image_types }}
+
+          # The recent commit of the Containerfile
+          last_commit=$( git log -1 --format='%H' -- ${containerfile} )
+          echo "commit_hash=${last_commit}" >> $GITHUB_ENV
+
+          # Get tags from the Containerfile
+          tags=$( grep 'Tags:' ${containerfile} | sed "s/^[[:space:]]*#[[:space:]]*Tags: \(.*\)$/\1/" )
+          echo "tags=${tags}" >> $GITHUB_ENV
+
+          [ -z "$last_commit-x" -o -z "$tags-x" ] && false
+
+          echo "[Debug]"
+          echo "tags=${tags}"
+          echo "commit_hash=${last_commit}"
+
+      -
+        name: "Render the definition"
+        uses: chuhlomin/render-template@v1
+        with:
+          template: docker-library-definition.tmpl
+          result_path: official-images/library/almalinux.${{ matrix.version_major }}.${{ matrix.image_types }}
+          vars: |
+            tags: ${{ env.tags }}
+            commit_hash: ${{ env.commit_hash}}
+            version_major: ${{ matrix.version_major }}
+            image_type: ${{ matrix.image_types }}
+
+      -
+        name: "[Debug] Check definitions"
+        run: |
+          cat official-images/library/almalinux.${{ matrix.version_major }}.${{ matrix.image_types }}
+
+      # Upload 'official-images/library/almalinux.*'
+      - uses: actions/upload-artifact@v4
+        name: Upload definitions for ${{ matrix.version_major }} ${{ matrix.image_types }}
+        with:
+          name: definition-${{ matrix.version_major }}.${{ matrix.image_types }}
+          path: official-images/library/almalinux.${{ matrix.version_major }}.${{ matrix.image_types }}
+
+  push-pr:
+    if: inputs.pr
+    name: "Create Pull Request with the new definition file"
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-definitions
+
+    steps:
+      -
+        name: Checkout ${{ env.local_library }}, branch 'master'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.local_library }}
+          path: official-images
+          token: ${{ secrets.GIT_HUB_TOKEN }}
+          fetch-depth: 0 # Checkout all commits
+
+      -
+        name: "Sync ${{ env.local_library }} with ${{ env.docker_library }}"
+        run: |
+          # sync ${{ env.local_library }}
+          cd official-images
+
+          git remote add upstream https://github.com/${{ env.docker_library }}.git
+          git fetch upstream
+          git checkout master
+
+          ret=0
+          git rebase upstream/master || ret=$?
+
+          if [ $ret -ne 0 ]; then
+            echo "Abort the rebase, reset last commit, stash it and try to rebase again ..."
+            git rebase --abort
+            git reset HEAD~1
+            git stash
+            git rebase upstream/master
+          fi
+
+      # Download uploaded above 'official-images/library/almalinux.*'
+      - uses: actions/download-artifact@v4
+        name: Download all definitions
+        with:
+          pattern: definition-*
+          merge-multiple: true
+          path: official-images/library/
+
+      -
+        name: "Create head of official-images/library/almalinux"
+        run: |
+          echo "# This file was generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          Maintainers: The AlmaLinux OS Foundation <cloud-infra@almalinux.org> (@AlmaLinux)
+          GitRepo: ${{ github.server_url }}/${{ github.repository }}.git" > official-images/library/almalinux
+
+      -
+        name: "Merge definitions into official-images/library/almalinux"
+        run: |
+          # create official-images/library/almalinux
+          for file in $( ls -1 official-images/library/almalinux.*.* ); do
+            echo "" >> official-images/library/almalinux
+            cat $file >> official-images/library/almalinux
+          done
+          rm -f official-images/library/almalinux.*.*
+
+          echo "[Debug]"
+          cat official-images/library/almalinux
+
+      -
+        name: "Prepare date stamp"
+        run: |
+          # date stamp
+          date_stamp=$(date -u '+%Y%m%d')
+          echo "date_stamp=${date_stamp}" >> $GITHUB_ENV
+          [ -z "$date_stamp-x" ] && false
+
+          # [Debug]
+          echo "date_stamp=${date_stamp}"
+
+      -
+        name: "Prepare time stamp"
+        run: |
+          # time stamp
+          time_stamp=$(date -u '+%H:%M:%S')
+          echo "time_stamp=${time_stamp}" >> $GITHUB_ENV
+          [ -z "$time_stamp-x" ] && false
+
+          # [Debug]
+          echo "time_stamp=${time_stamp}"
+
+      -
+        name: "Commit and push official-images/library/almalinux"
+        uses: EndBug/add-and-commit@v9
+        with:
+          cwd: official-images
+          default_author: user_info
+          message: "Almalinux auto-update - ${{ env.date_stamp }} ${{ env.time_stamp }}"
+          push: true
+
+      -
+        name: Create Pull Request for official-images/library/almalinux
+        run: |
+          # create pull request with 'gh pr create'
+          gh_opts=''
+          [ "${{ inputs.draft }}" = "true" ] && gh_opts='--draft'
+          title="Almalinux auto-update - ${{ env.date_stamp }} ${{ env.time_stamp }}"
+          body="This is an auto-generated commit. Any concern or issues, please contact or email AlmaLinux OS Foundation cloud-infra@almalinux.org (@AlmaLinux)"
+
+          cd official-images
+          gh auth login --with-token < <(echo ${{ secrets.GIT_HUB_TOKEN }})
+
+          prs=$(gh pr list \
+          --repo ${{ env.docker_library }} \
+          --base master \
+          --json title \
+          --jq 'length')
+
+          echo "${prs} pull request(s) found for the ${{ env.docker_library }} branch master."
+          if [ $prs -lt 1 ]; then
+            echo "Create pull request with 'gh pr create'"
+            gh pr create \
+            --title "${title}" \
+            --body "${body}" \
+            --repo ${{ env.docker_library }} \
+            --base master \
+            ${gh_opts}
+          fi
