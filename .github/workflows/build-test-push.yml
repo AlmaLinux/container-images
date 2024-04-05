@@ -60,7 +60,7 @@ env:
   # Registries list
   # production: docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux
   # testing: quay.io/almalinuxautobot
-  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot' }}
+  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot, ghcr.io/almalinux' }}
 
 jobs:
   build:
