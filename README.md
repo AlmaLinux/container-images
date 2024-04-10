@@ -8,6 +8,7 @@ The repository provides scripts and workflows to:
     - [Docker.io](https://hub.docker.com)
     - [Quay.io](https://quay.io)
     - [GitHub Packages](https://github.com/features/packages)
+- Extract root filesystem (RootFS) from default and minimal images
 - Publish the images to the [Docker *Official Library*](https://hub.docker.com/u/library).
 
 These Container Images can be used with all [OCI complaint](https://opencontainers.org/) container runtime environments such as Docker, Podman and Kubernetes as well as serve as drop-in replacements for CentOS images as they reach [End of Life](https://centos.org/centos-linux-eol/).
@@ -21,8 +22,8 @@ Personal, Organization or Enterprise account on GitHub is the only requirement. 
  The project utilizes [GitHub Actions](https://github.com/features/actions) to provide public, transparent and fast workflows that are easy to understand, use and modify.
 
 There are two workflows on GitHub Actions designed to achieve the idea:
-- Build, test and push all types of container images into the *Client Library*
-- Use some of these images (`default` and `minimal` configurations types only) to request Docker to create images for the *Official Library*.
+- Build, test, push all types of container images into the *Client Library*, and extract RootFS from `default` and `minimal` images.
+- Use these RootFS to request Docker to create images for the *Official Library*.
 
 You can read more about how the workflows work in the [section](#workflows-jobs-and-steps) below.
 
@@ -38,7 +39,10 @@ The AlmaLinux [***Official Library***](https://hub.docker.com/_/almalinux) is ma
 Each image pushed to the *Client Library* is built from a corresponding [Containerfile](https://github.com/AlmaLinux/container-images/tree/main/Containerfiles) that is a unique file for each AlmaLinux release and configuration type: `base`, `default`, `init`, `micro`, `minimal`.
 These files match [Dockerfile](https://docs.docker.com/reference/dockerfile/) standard and contain commands and instructions on how to install AlmaLinux's whole root filesystem in them.
 
-Images for the *Docker Official* Library are built using other [Containerfiles](https://github.com/AlmaLinux/container-images/tree/docker-library/Containerfiles) that are also designed for each AlmaLinux release but only `default` and `minimal` types. These Containerfiles correspond images from the *Client Library* at [Quay.io/almalinuxorg](https://quay.io/organization/almalinuxorg)
+Images for the *Docker Official* Library are built using other Dockerfiles that are also designed for each AlmaLinux release but only `default` and `minimal` types:
+- 8 [default](https://github.com/yuravk/container-images/tree/8/default) and [minimal](https://github.com/yuravk/container-images/tree/8/minimal) per platform;
+- 9 [default](https://github.com/yuravk/container-images/tree/9/default) and [minimal](https://github.com/yuravk/container-images/tree/9/minimal) per platform.
+These Dockerfiles are to build images from scratch using platform's corresponding RootFS.
 
 ## What Container Images are built
 
@@ -127,22 +131,75 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 └── README.md
 ```
 
-2. Branch 'docker-library'
+2. Branch for AlmaLinux release '8'
 ```sh
 .
-├── Containerfiles
-│   ├── 8
-│   │   ├── Containerfile.default
-│   │   └── Containerfile.minimal
-│   └── 9
-│       ├── Containerfile.default
-│       └── Containerfile.minimal
-└── docker-library-definition.tmpl
+├── docker-library-definition.tmpl
+│
+├── default
+│   ├── amd64
+│   │   ├── Dockerfile
+│   │   └── almalinux-8-default-amd64.tar.gz
+│   ├── arm64
+│   │   ├── Dockerfile
+│   │   └── almalinux-8-default-arm64.tar.gz
+│   ├── ppc64le
+│   │   ├── Dockerfile
+│   │   └── almalinux-8-default-ppc64le.tar.gz
+│   └── s390x
+│       ├── Dockerfile
+│       └── almalinux-8-default-s390x.tar.gz
+└── minimal
+    ├── amd64
+    │   ├── Dockerfile
+    │   └── almalinux-8-minimal-amd64.tar.gz
+    ├── arm64
+    │   ├── Dockerfile
+    │   └── almalinux-8-minimal-arm64.tar.gz
+    ├── ppc64le
+    │   ├── Dockerfile
+    │   └── almalinux-8-minimal-ppc64le.tar.gz
+    └── s390x
+        ├── Dockerfile
+        └── almalinux-8-minimal-s390x.tar.gz
+```
+
+3. Branch for AlmaLinux release '9'
+```sh
+.
+├── docker-library-definition.tmpl
+│
+├── default
+│   ├── amd64
+│   │   ├── Dockerfile
+│   │   └── almalinux-9-default-amd64.tar.gz
+│   ├── arm64
+│   │   ├── Dockerfile
+│   │   └── almalinux-9-default-arm64.tar.gz
+│   ├── ppc64le
+│   │   ├── Dockerfile
+│   │   └── almalinux-9-default-ppc64le.tar.gz
+│   └── s390x
+│       ├── Dockerfile
+│       └── almalinux-9-default-s390x.tar.gz
+└── minimal
+    ├── amd64
+    │   ├── Dockerfile
+    │   └── almalinux-9-minimal-amd64.tar.gz
+    ├── arm64
+    │   ├── Dockerfile
+    │   └── almalinux-9-minimal-arm64.tar.gz
+    ├── ppc64le
+    │   ├── Dockerfile
+    │   └── almalinux-9-minimal-ppc64le.tar.gz
+    └── s390x
+        ├── Dockerfile
+        └── almalinux-9-minimal-s390x.tar.gz
 ```
 
 ### Workflow **.yml* files
 
-The [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow is used to **Build, Test and Push** images to the *Client Library*:
+The [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow is used to **Build, Test and Push** images to the *Client Library*, and extract RootFS:
 ```yaml
 name: Build, test and push to the Client Library
 
@@ -201,10 +258,11 @@ COPY --from=system-build /mnt/sys-root/ /
 CMD ["/bin/bash"]
 ```
 
-This [`Containerfiles/9/Containerfile.minimal`](https://github.com/AlmaLinux/container-images/blob/docker-library/Containerfiles/9/Containerfile.minimal) file is a Containerfile example for AlmaLinux release 9 and `minimal` type used to build container image for the Docker *Official Library*:
+This [`minimal/amd64/Dockerfile`](https://github.com/yuravk/container-images/blob/9/minimal/amd64/Dockerfile) file is a Dockerfile example for AlmaLinux release 9 `minimal` type and `amd64` (`x86_64`) platform used to build container image for the Docker *Official Library*:
 ```Dockerfile
 # Tags: minimal, 9-minimal, 9.3-minimal, 9.3-minimal-20231124
-FROM quay.io/almalinuxorg/9-minimal:9.3-20231124
+FROM scratch
+ADD almalinux-9-minimal-amd64.tar.xz /
 
 CMD ["/bin/bash"]
 ```
@@ -214,9 +272,12 @@ CMD ["/bin/bash"]
 The Docker *Official Library* uses [Definition File](https://github.com/docker-library/official-images/blob/master/library/almalinux) to request building of official images. Changing the file triggers a new image(s) building on the Docker side. The [`docker-library-definition.tmpl`](https://github.com/yuravk/container-images/blob/docker-library/docker-library-definition.tmpl) template is used to generate the Definition file:
 ```yaml
 Tags: {{ .tags }}
-GitFetch: refs/heads/docker-library
+GitFetch: refs/heads/{{ .version_major }}
 GitCommit: {{ .commit_hash }}
-File: Containerfiles/{{ .version_major }}/Containerfile.{{ .image_type }}
+amd64-Directory: {{ .image_type }}/amd64/
+arm64v8-Directory: {{ .image_type }}/arm64/
+ppc64le-Directory: {{ .image_type }}/ppc64le/
+s390x-Directory: {{ .image_type }}/s390x/
 Architectures: amd64, arm64v8, ppc64le, s390x
 ```
 
@@ -225,7 +286,7 @@ Architectures: amd64, arm64v8, ppc64le, s390x
 ## Fork GitHub repositories
 
 Fork the following repositories:
-- [**container-images**](https://github.com/AlmaLinux/container-images), you will need both the `main` and the `container-library` branches.
+- [**container-images**](https://github.com/AlmaLinux/container-images), you will need the `main`, the `8` and the `9` branches.
 - [**docker-library**](https://github.com/docker-library/official-images)
 
 Read more about GitHub [forks here](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo).
@@ -355,41 +416,34 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
 ```
     Build, test and push to the Client Library
     │
-    ├── Deploy 9 minimal images
-    │   ├── Set up job
-    │   ├── DeployPrepare AlmaLinux Minor version number
-    │   ├── Prepare date stamp
-    │   ├── Generate list of Docker images to use as base name for tags
-    │   ├── Enable containerd image store on Docker Engine
-    │   ├── Checkout _container-images, branch 'main'
-    │   ├── Checkout _container-images, branch 'docker-library', path 'docker-library'
-    │   ├── Set up QEMU
-    │   ├── Set up Docker Buildx
-    │   ├── Login to Docker.io
-    │   ├── Login to Quay.io
-    │   ├── Login to Ghcr.io
-    │   ├── Generate tags and prepare metadata to build and push
-    │   ├── Build images
-    │   ├── Test images
-    │   ├── Push images to Client Library
-    │   ├── Change date stamp in Containerfile (default and minimal only)
-    │   ├── Upload changed Containerfile (default and minimal only)
-    │   ├── Post Push images to Client Library
-    │   ├── Post Build images
-    │   ├── Post Login to Ghcr.io
-    │   ├── Post Set up Docker Buildx
-    │   ├── Post Checkout _container-images, branch 'docker-library', path 'docker-library'
-    │   ├── Post Checkout _container-images, branch 'main'
-    │   └── Complete job
-    │
-    └── Collect and save changed Containerfile(s) used by Docker Official Library
-        ├── Set up job
-        ├── Checkout container-images, branch 'docker-library'
-        ├── Download changed Containerfiles
-        ├── [Debug] Print Containerfiles/9/Containerfile.
-        ├── Commit and push Containerfiles/9/Containerfile.minimal changes
-        ├── Post Checkout container-images, branch 'docker-library'
-        └── Complete job
+    └── Deploy 9 minimal images
+        ├── Set up job
+        ├── DeployPrepare AlmaLinux Minor version number
+        ├── Prepare date stamp
+        ├── Generate list of Docker images to use as base name for tags
+        ├── Enable containerd image store on Docker Engine
+        ├── Checkout _container-images, branch 'main'
+        ├── Checkout _container-images, branch '9', path '9'
+        ├── Set up QEMU
+        ├── Set up Docker Buildx
+        ├── Login to Docker.io
+        ├── Login to Quay.io
+        ├── Login to Ghcr.io
+        ├── Generate tags and prepare metadata to build and push
+        ├── Build images
+        ├── Test images
+        ├── Push images to Client Library
+        ├── Extract RootFS (default and minimal only)
+        ├── Change date stamp in Dockerfile (default and minimal only)
+        ├── Commit and push minimal/*/* Dockerfile and RootFS (branch 9)"
+        ├── Post Push images to Client Library
+        ├── Post Build images
+        ├── Post Login to Ghcr.io
+        ├── Post Set up Docker Buildx
+        ├── Post Checkout _container-images, branch '9', path '9'
+        ├── Post Checkout _container-images, branch 'main'
+        └── Complete job
+
 ```
 
 ### Inputs
@@ -437,9 +491,9 @@ The successful switch is printed in the docker info:
 Checkouts *container-images* into branch 'main'. The repository directory is located at `/home/runner/work/container-images/container-images`. Please note, the only last commit is checked out.
 The [actions/checkout@v4](https://github.com/actions/checkout/) is used.
 
-#### Step: Checkout *container-images*, branch 'docker-library', path 'docker-library'
+#### Step: Checkout *container-images*, branch '${version_major}', path '${version_major}'
 
-Checkouts *container-images* into branch 'docker-library'. The repository directory is located at `/home/runner/work/container-images/docker-library`.
+Checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/${version_major}`.
 The [actions/checkout@v4](https://github.com/actions/checkout/) is used.
 
 #### Step: Set up QEMU
@@ -526,53 +580,53 @@ docker run --platform=${platform} ${{ steps.build-images.outputs.digest }}
 
 The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used. This step pushes built images into *Client Library*. The options are the same as for **Build images** step.
 
-
-#### Step: Change date stamp in Containerfile (default and minimal only)
+#### Step: Extract RootFS (default and minimal only)
 
 ❗ Skip this step if the image type is not 'default' or 'minimal'.
 
-The step changes (*# Tags* with date stamp) corresponded [`Containerfiles/*/Containerfile.*`](https://github.com/AlmaLinux/container-images/tree/docker-library), which Docker will use to build images for the *Official Library*. An example is for AlmaLinux 8 minimal `Containerfiles/8/Containerfile.minimal` file:
+The step is to extract RootFS from existing image's blobs:
+- uses`docker save` to produce a tarred repository and save it to the "tar file". Unpack the "tar file" to get blobs.
+- Prepares the "temporary Dockerfile" to build image based on RootFS.
+```Dockerfile
+    FROM scratch
+    ADD rootfs.tar.gz /
+    CMD ["/bin/bash"]
+```
+- Loops blobs to find all zipped files that are RootFS for a particular architecture.
+- with `docker build`, builds an image from the "temporary Dockerfile".
+- with `docker run`, runs the image and query `almalinux-release` package's *architecture*.
+- Maps found *architecture* to the corresponding *platform*.
+- Copes the "taken RootFS" into corresponded .tar.xz (like `almalinux-9-default-amd64.tar.xz`)
+
+#### Step: Change date stamp in Dockerfile (default and minimal only)
+
+❗ Skip this step if the image type is not 'default' or 'minimal'.
+
+The step changes (*# Tags* with date stamp) in corresponded `${images_type}/${platform}/Docker file` for AlmaLinux [release 8](https://github.com/yuravk/container-images/tree/8) an [release 9](https://github.com/yuravk/container-images/tree/9), which Docker will use to build images for the *Official Library*. An example is for AlmaLinux 9 minimal amd64 [`minimal/amd64/dockerfile`](https://github.com/yuravk/container-images/blob/9/minimal/amd64/Dockerfile) file:
 ```docker
 # Tags: 8-minimal, 8.9-minimal, 8.9-minimal-20240319
+FROM scratch
+ADD almalinux-9-minimal-amd64.tar.xz /
 
-FROM quay.io/almalinuxorg/8-minimal:8.9-20240319
+CMD ["/bin/bash"]
 ```
-The change indicates that a new `default` and/or `minimal` container image was pushed to the *Client Library* and should be requested to be built by Docker. The change will later be committed to the `docker-library` branch.
+The change indicates that a new `default` and/or `minimal` container image was pushed to the *Client Library* and should be requested to be built by Docker. The change will later be committed to the `8` or `9` branch.
 
-#### Step: Upload changed *Containerfiles/*/Containerfile.**
+> It will try to pull recent changes (before push) with `--rebase --autostash`
 
-❗ Skip this step if the image type is not 'default' or 'minimal'.
-
-The step uses [actions/upload-artifact@v4](https://github.com/actions/upload-artifact) to store the artifact changed in the previous Containerfile step. The artifact is named against `image_type`, like `containerfiles-${image_type}`.
-
-Artifacts are used to transfer files between different jobs of the same workflow. The artifact is a zip archive of the file without file-path included.
-
-It is also possible to download artifacts via GitHub Action's web interface.
-
-### Job: Collect and save changed Containerfile(s) used by Docker Official Library
+#### Step: Commit and push ${image_types }/*/* Dockerfile and RootFS (branch ${version_major })"
 
 ❗ Skip this step if the image type is not 'default' or 'minimal'.
 
-#### Step: Checkout *container-images*, branch 'docker-library'
+❗ The step is skipped if '*Push to production registries*' is not checked (`inputs.production` set to `false`.)
 
-Checkouts *container-images* into branch 'docker-library'. The repository directory is located at `/home/runner/work/container-images/container-images`.
-The [actions/checkout@v4](https://github.com/actions/checkout/) is used.
-
-#### Step: Download changed Containerfiles
-
-Uses [actions/download-artifact@v4](https://github.com/actions/download-artifact) to download multiple (`merge-multiple: true`) artifacts with changed Containerfiles. The files are saved into the `Containerfiles/version_major/` directory.
-
-#### Step: Commit and push *Containerfiles/version_major/Containerfile.** changes
-
-> The step is skipped if '*Push to production registries*' is not checked (`inputs.production` set to `false`.)
-
-Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commit) to commit and push Containerfiles, which was downloaded on the previous step, and changed by the previous job.
+Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commit) to commit and push Dockerfile and RootFS, which were changed and extracted on the previous steps.
 
 The commit message is:
 ```yaml
-AlmaLinux ${{ inputs.version_major }} image build as of ${{ needs.build.outputs.date_stamp }} (with ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+AlmaLinux ${version_major}-${images_type} image build as of ${date_stamp} (with ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
 ```
-It includes the AlmaLinux version major, image build date, and reference to this GitHub Action.
+It includes the AlmaLinux version major, image type, build date, and reference to this GitHub Action.
 
 ## Publish images to the Docker Library
 
@@ -594,13 +648,13 @@ Publish images to the Docker Library
 .
 ├── 9 minimal definition preparing
 │   ├── Set up job
-│   ├── Checkout container-images, branch 'docker-library'
+│   ├── Checkout container-images, branch '9'
 │   ├── Checkout official-images, branch 'master'
 │   ├── Get need data for the definition
 │   ├── Render the definition
 │   ├── Upload the definition for 9 minimal
 │   ├── Post Checkout official-images, branch 'master'
-│   ├── Post Checkout container-images, branch 'docker-library'
+│   ├── Post Checkout container-images, branch '9'
 │   └── Complete job
 │
 └── Create Pull Request with the new definition file
@@ -629,9 +683,9 @@ The workflow inputs are:
 
 Job iterates (using matrix) with AlmaLinux all `version_major`, and `image_types` (`default` and `minimal`). Multiple jobs run simultaneously for each of the versions and each of the image types.
 
-#### Step: Checkout *container-images*, branch 'docker-library'
+#### Step: Checkout *container-images*, branch '${version_major}'
 
-The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch 'docker-library'. The repository directory is located at `/home/runner/work/container-images/container-images`. All commits for the branch are checkout with `fetch-depth: 0`.
+The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/container-images`. All commits for the branch are checkout with `fetch-depth: 0`.
 
 #### Step: Checkout *official-images*, branch 'master'
 
@@ -695,7 +749,7 @@ Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commi
 
 The commit message is:
 ```yaml
-Almalinux auto-update - ${{ env.date_stamp }}.
+Almalinux auto-update - ${{ env.date_stamp }} ${{ env.time_stamp }}.
 ```
 
 #### Step: Create Pull Request for *official-images/library/almalinux*

@@ -19,6 +19,8 @@ env:
   docker_library: docker-library/official-images
   # Docker Library Git repository name (local fork): ${{ github.actor }}/official-images or almalinux/docker-library-official-images
   local_library: almalinux/docker-library-official-images
+  # Docker Library Git repository owner (local fork): ${{ github.actor }} or almalinux
+  library_owner: almalinux
 
 jobs:
   prepare-definitions:
@@ -39,10 +41,10 @@ jobs:
 
     steps:
       -
-        name: Checkout ${{ github.repository }}, branch 'docker-library'
+        name: Checkout ${{ github.repository }}, branch '${{ matrix.version_major }}'
         uses: actions/checkout@v4
         with:
-          ref: docker-library
+          ref: ${{ matrix.version_major }}
           fetch-depth: 0 # Checkout all commits
 
       -
@@ -55,15 +57,17 @@ jobs:
       -
         name: "Get need data for the definition"
         run: |
-          # Containerfile for specific version and image type
-          containerfile=Containerfiles/${{ matrix.version_major }}/Containerfile.${{ matrix.image_types }}
+          # Dockerfile for specific version and image type (let's take platform amd64)
+          platform=amd64
+          dockerfile=${{ matrix.image_types }}/${platform}/Dockerfile
+          test -f ${dockerfile}
 
-          # The recent commit of the Containerfile
-          last_commit=$( git log -1 --format='%H' -- ${containerfile} )
+          # The recent commit of the Dockerfile
+          last_commit=$( git log -1 --format='%H' -- ${dockerfile} )
           echo "commit_hash=${last_commit}" >> $GITHUB_ENV
 
-          # Get tags from the Containerfile
-          tags=$( grep 'Tags:' ${containerfile} | sed "s/^[[:space:]]*#[[:space:]]*Tags: \(.*\)$/\1/" )
+          # Get tags from the Dockerfile
+          tags=$( grep 'Tags:' ${dockerfile} | sed "s/^[[:space:]]*#[[:space:]]*Tags: \(.*\)$/\1/" )
           echo "tags=${tags}" >> $GITHUB_ENV
 
           [ -z "$last_commit-x" -o -z "$tags-x" ] && false
@@ -208,6 +212,7 @@ jobs:
           prs=$(gh pr list \
           --repo ${{ env.docker_library }} \
           --base master \
+          --author ${{ env.library_owner}} \
           --json title \
           --jq 'length')
 
