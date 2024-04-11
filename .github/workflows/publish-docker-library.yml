@@ -109,6 +109,14 @@ jobs:
 
     steps:
       -
+        name: "Sync ${{ env.local_library }} with ${{ env.docker_library }}, branch 'master'"
+        run: |
+          # Sync ${{ env.local_library }} with ${{ env.docker_library }}, branch 'master'
+
+          gh auth login --with-token < <(echo ${{ secrets.GIT_HUB_TOKEN }})
+          gh repo sync ${{ env.local_library }} --force --source ${{ env.docker_library }} --branch master
+
+      -
         name: Checkout ${{ env.local_library }}, branch 'master'
         uses: actions/checkout@v4
         with:
@@ -116,27 +124,6 @@ jobs:
           path: official-images
           token: ${{ secrets.GIT_HUB_TOKEN }}
           fetch-depth: 0 # Checkout all commits
-
-      -
-        name: "Sync ${{ env.local_library }} with ${{ env.docker_library }}"
-        run: |
-          # sync ${{ env.local_library }}
-          cd official-images
-
-          git remote add upstream https://github.com/${{ env.docker_library }}.git
-          git fetch upstream
-          git checkout master
-
-          ret=0
-          git rebase upstream/master || ret=$?
-
-          if [ $ret -ne 0 ]; then
-            echo "Abort the rebase, reset last commit, stash it and try to rebase again ..."
-            git rebase --abort
-            git reset HEAD~1
-            git stash
-            git rebase upstream/master
-          fi
 
       # Download uploaded above 'official-images/library/almalinux.*'
       - uses: actions/download-artifact@v4
@@ -194,7 +181,8 @@ jobs:
         with:
           cwd: official-images
           default_author: user_info
-          message: "Almalinux auto-update - ${{ env.date_stamp }} ${{ env.time_stamp }}"
+          pull: '--rebase --autostash'
+          message: "AlmaLinux auto-update - ${{ env.date_stamp }} ${{ env.time_stamp }}"
           push: true
 
       -
