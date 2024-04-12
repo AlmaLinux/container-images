@@ -416,34 +416,38 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
 ```
     Build, test and push to the Client Library
     │
-    └── Deploy 9 minimal images
-        ├── Set up job
-        ├── DeployPrepare AlmaLinux Minor version number
-        ├── Prepare date stamp
-        ├── Generate list of Docker images to use as base name for tags
-        ├── Enable containerd image store on Docker Engine
-        ├── Checkout _container-images, branch 'main'
-        ├── Checkout _container-images, branch '9', path '9'
-        ├── Set up QEMU
-        ├── Set up Docker Buildx
-        ├── Login to Docker.io
-        ├── Login to Quay.io
-        ├── Login to Ghcr.io
-        ├── Generate tags and prepare metadata to build and push
-        ├── Build images
-        ├── Test images
-        ├── Push images to Client Library
-        ├── Extract RootFS (default and minimal only)
-        ├── Change date stamp in Dockerfile (default and minimal only)
-        ├── Commit and push minimal/*/* Dockerfile and RootFS (branch 9)"
-        ├── Post Push images to Client Library
-        ├── Post Build images
-        ├── Post Login to Ghcr.io
-        ├── Post Set up Docker Buildx
-        ├── Post Checkout _container-images, branch '9', path '9'
-        ├── Post Checkout _container-images, branch 'main'
-        └── Complete job
-
+    ├── Deploy 9 minimal images
+    │   ├── Set up job
+    │   ├── DeployPrepare AlmaLinux Minor version number
+    │   ├── Prepare date stamp
+    │   ├── Generate list of Docker images to use as base name for tags
+    │   ├── Enable containerd image store on Docker Engine
+    │   ├── Checkout _container-images, branch 'main'
+    │   ├── Checkout _container-images, branch '9', path '9'
+    │   ├── Set up QEMU
+    │   ├── Set up Docker Buildx
+    │   ├── Login to Docker.io
+    │   ├── Login to Quay.io
+    │   ├── Login to Ghcr.io
+    │   ├── Generate tags and prepare metadata to build and push
+    │   ├── Build images
+    │   ├── Test images
+    │   ├── Push images to Client Library
+    │   ├── Extract RootFS (default and minimal only)
+    │   ├── Change date stamp in Dockerfile (default and minimal only)
+    │   ├── Commit and push minimal/*/* Dockerfile and RootFS (branch 9)"
+    │   ├── Post Push images to Client Library
+    │   ├── Post Build images
+    │   ├── Post Login to Ghcr.io
+    │   ├── Post Set up Docker Buildx
+    │   ├── Post Checkout _container-images, branch '9', path '9'
+    │   ├── Post Checkout _container-images, branch 'main'
+    │   └── Complete job
+    │
+    └── Optimize almalinux/container-images size of the branch '9'
+        ├── Checkout almalinux/container-images, branch '9', path '9'
+        ├── Optimize size of branch the '9'
+        └── Commit and push almalinux/container-images, branch '9'
 ```
 
 ### Inputs
@@ -627,6 +631,30 @@ The commit message is:
 AlmaLinux ${version_major}-${images_type} image build as of ${date_stamp} (with ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
 ```
 It includes the AlmaLinux version major, image type, build date, and reference to this GitHub Action.
+
+### Optimize almalinux/container-images size of the branch '${version_major}'
+
+❗ Skip the job if the image type is not 'default' or 'minimal', or '*Push to production registries*' is not checked (`inputs.production` set to `false`.)
+
+#### Checkout almalinux/container-images, branch '${version_major}', path '${version_major}'
+
+The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/container-images` and its subdirectory is named '${version_major}'. All commits for the branch are checkout with `fetch-depth: 0`.
+
+#### Optimize size of branch the '${version_major}'
+
+This step is written in bash and is designed to:
+- preserves 'default' and 'minimal' folders with Dockerfiles and RootFSs into `../tmp-${date_stamp}` folder
+- checkouts into new local 'tmp' branch
+- removes local ${version_major} branch
+- checkouts into orphan ${version_major} branch
+- restores 'default' and 'minimal' folders into the orphan branch placeholder
+
+#### Commit and push almalinux/container-images, branch '${version_major}'
+
+Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commit) to commit and push Dockerfiles and RootFSs which were prepared on previous step.
+The following options are used to push:
+- `--force` - to rewrite history
+- `--set-upstream origin ${version_major}` - to set upstream branch (as new one is orphan)
 
 ## Publish images to the Docker Library
 
