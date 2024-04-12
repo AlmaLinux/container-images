@@ -660,7 +660,7 @@ Publish images to the Docker Library
 └── Create Pull Request with the new definition file
     ├── Set up job
     ├── Checkout official-images, branch 'master'
-    ├── Sync official-images with docker-library/official-images
+    ├── Sync official-images with docker-library/official-images, branch 'master'
     ├── Download all definitions
     ├── Create head of official-images/library/almalinux
     ├── Merge definitions into official-images/library/almalinux
@@ -721,7 +721,7 @@ That's your fork of [docker-library/official-images](https://github.com/docker-l
 
 #### Step: Sync *official-images* with upstream
 
-The step is written in bash. It adds the [official-images upstream](https://github.com/docker-library/official-images) repository, sets a local 'master' branch to track the corresponding one from the upstream, and tries to rebase with the 'upstream/master'.
+The step is written in bash. It uses GitHub CLI to sync the [docker-library-official-images](https://github.com/AlmaLinux/docker-library-official-images) with the [official-images upstream](https://github.com/docker-library/official-images) repository.
 
 #### Step: Download all definitions
 
@@ -749,8 +749,9 @@ Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commi
 
 The commit message is:
 ```yaml
-Almalinux auto-update - ${{ env.date_stamp }} ${{ env.time_stamp }}.
+AlmaLinux auto-update - ${{ env.date_stamp }} ${{ env.time_stamp }}.
 ```
+> It will try to pull recent changes (before push) with `--rebase --autostash`
 
 #### Step: Create Pull Request for *official-images/library/almalinux*
 
