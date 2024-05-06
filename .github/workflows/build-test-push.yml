@@ -83,7 +83,7 @@ jobs:
             8)
               version_minor="9" ;;
             9)
-              version_minor="3"  ;;
+              version_minor="4"  ;;
             10)
               version_minor="0" ;;
             *)
