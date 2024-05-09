@@ -60,7 +60,7 @@ env:
   # Registries list:
   # for production: docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux
   # for testing: quay.io/almalinuxautobot
-  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot, ghcr.io/almalinux' }}
+  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot' }}
 
 jobs:
   build-test-push:
@@ -386,7 +386,7 @@ jobs:
   optimize-repo-size:
     # 'default' or 'minimal' images only and 'Push to production' is checked
     if: ( inputs.type_default || inputs.type_minimal ) && inputs.production
-    name: Optimize ${{ github.repository }} size of the branch '${{ inputs.version_major }}'
+    name: Optimize size of repository
     runs-on: ubuntu-latest
     needs:
       - build-test-push

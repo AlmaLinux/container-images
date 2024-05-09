@@ -444,7 +444,7 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
     │   ├── Post Checkout _container-images, branch 'main'
     │   └── Complete job
     │
-    └── Optimize almalinux/container-images size of the branch '9'
+    └── Optimize size of repository
         ├── Checkout almalinux/container-images, branch '9', path '9'
         ├── Optimize size of branch the '9'
         └── Commit and push almalinux/container-images, branch '9'
@@ -632,15 +632,15 @@ AlmaLinux ${version_major}-${images_type} image build as of ${date_stamp} (with 
 ```
 It includes the AlmaLinux version major, image type, build date, and reference to this GitHub Action.
 
-### Optimize almalinux/container-images size of the branch '${version_major}'
+### Job: Optimize size of repository
 
 ❗ Skip the job if the image type is not 'default' or 'minimal', or '*Push to production registries*' is not checked (`inputs.production` set to `false`.)
 
-#### Checkout almalinux/container-images, branch '${version_major}', path '${version_major}'
+#### Step: Checkout almalinux/container-images, branch '${version_major}', path '${version_major}'
 
 The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/container-images` and its subdirectory is named '${version_major}'. All commits for the branch are checkout with `fetch-depth: 0`.
 
-#### Optimize size of branch the '${version_major}'
+#### Step: Optimize size of branch the '${version_major}'
 
 This step is written in bash and is designed to:
 - preserves 'default' and 'minimal' folders with Dockerfiles and RootFSs into `../tmp-${date_stamp}` folder
@@ -649,7 +649,7 @@ This step is written in bash and is designed to:
 - checkouts into orphan ${version_major} branch
 - restores 'default' and 'minimal' folders into the orphan branch placeholder
 
-#### Commit and push almalinux/container-images, branch '${version_major}'
+#### Step: Commit and push almalinux/container-images, branch '${version_major}'
 
 Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commit) to commit and push Dockerfiles and RootFSs which were prepared on previous step.
 The following options are used to push:
