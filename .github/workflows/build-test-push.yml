@@ -81,7 +81,7 @@ jobs:
         run: |
           case ${{ inputs.version_major }} in
             8)
-              version_minor="9" ;;
+              version_minor="10" ;;
             9)
               version_minor="4"  ;;
             10)
