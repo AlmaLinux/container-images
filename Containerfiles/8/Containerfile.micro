@@ -17,7 +17,7 @@ RUN rm -rf /mnt/sys-root/var/cache/dnf /mnt/sys-root/var/log/dnf* /mnt/sys-root/
     touch /mnt/sys-root/etc/resolv.conf; \
     touch /mnt/sys-root/etc/hostname; \
     chmod 600 /mnt/sys-root/etc/.pwd.lock; \
-    rm -rf /mnt/sys-root/usr/share/locale/en* /mnt/sys-root/boot /mnt/sys-root/dev/null /mnt/sys-root/var/log/hawkey.log ; \
+    rm -rf /mnt/sys-root/usr/share/locale/en* /mnt/sys-root/boot /mnt/sys-root/dev/null /mnt/sys-root/var/log/hawkey.log /var/lib/rpm/* ; \
     echo '0.0 0 0.0' > /mnt/sys-root/etc/adjtime; \
     echo '0' >> /mnt/sys-root/etc/adjtime; \
     echo 'UTC' >> /mnt/sys-root/etc/adjtime; \
