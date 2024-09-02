@@ -17,6 +17,7 @@ on:
           default: '9'
           type: choice
           options:
+            - "10-kitten"
             - 9
             - 8
 
@@ -55,7 +56,7 @@ env:
   version_latest: 9
 
   # Platforms list: linux/amd64, linux/ppc64le, linux/s390x, linux/arm64
-  platforms: 'linux/amd64, linux/ppc64le, linux/s390x, linux/arm64'
+  platforms: ${{ contains(inputs.version_major, '10') && 'linux/amd64/v2, linux/amd64, linux/ppc64le, linux/s390x, linux/arm64' || 'linux/amd64, linux/ppc64le, linux/s390x, linux/arm64' }}
 
   # Registries list:
   # for production: docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux
@@ -81,11 +82,13 @@ jobs:
         run: |
           case ${{ inputs.version_major }} in
             8)
-              version_minor="10" ;;
+              version_minor=".10" ;;
             9)
-              version_minor="4"  ;;
+              version_minor=".4"  ;;
             10)
-              version_minor="0" ;;
+              version_minor=".0" ;;
+            10-kitten)
+              version_minor= ;;
             *)
               echo "Almalinux ${{ inputs.version_major }} is not supported!" && false
           esac
@@ -202,8 +205,8 @@ jobs:
           tags: |
             type=raw,value=latest,enable=${{ matrix.image_types != 'default' || ( matrix.image_types == 'default' && inputs.version_major == env.version_latest ) }}
             type=raw,value=${{ inputs.version_major }},enable=true
-            type=raw,value=${{ inputs.version_major }}.${{ env.version_minor }},enable=true
-            type=raw,value=${{ inputs.version_major }}.${{ env.version_minor }}-${{ env.date_stamp }},enable=true
+            type=raw,value=${{ inputs.version_major }}${{ env.version_minor }},enable=true
+            type=raw,value=${{ inputs.version_major }}${{ env.version_minor }}-${{ env.date_stamp }},enable=true
 
       -
         name: Build images
@@ -257,6 +260,8 @@ jobs:
           name=almalinux-${{ inputs.version_major }}-${{ matrix.image_types }}
           pwd=$( pwd )
           path=${pwd}/${name}
+          almalinux_release='almalinux-release'
+          [ "${{ inputs.version_major }}" = "10-kitten" ] && almalinux_release='almalinux-kitten-release'
 
           # The "tar file" for 'docker save' to write to
           tar_name=${pwd}/${name}.tar
@@ -288,7 +293,7 @@ jobs:
               docker build -t rootfs .
 
               # Run the image and query almalinux-release package's architecture
-              arch=$( docker run --rm rootfs /bin/bash -c "rpm -q --qf=%{ARCH} almalinux-release" )
+              arch=$( docker run --rm rootfs /bin/bash -c "rpm -q --qf=%{ARCH} ${almalinux_release}" )
 
               # Map found architecture to the corresponding platform
               platform=
@@ -296,6 +301,8 @@ jobs:
               case ${arch} in
                 x86_64)
                   platform=amd64;;
+                x86_64_v2)
+                  platform=amd64_v2;;
                 ppc64le)
                   platform=ppc64le;;
                 s390x)
@@ -333,15 +340,18 @@ jobs:
           platforms="${{ env.platforms }}"
           for platform in ${platforms//,/ }; do
             arch=${platform#linux/}
+            arch=${arch/\//_}
             dockerfile=${{ inputs.version_major }}/${{ matrix.image_types }}/${arch}/Dockerfile
 
             case ${{ matrix.image_types }} in
               default)
-                tags="${{ inputs.version_major }}, ${{ inputs.version_major }}.${{ env.version_minor }}, ${{ inputs.version_major }}.${{ env.version_minor }}-${{ env.date_stamp }}"
-                [ "${{ inputs.version_major }}" = "9" ] && tags="latest, ${tags}" ;;
+                tags="${{ inputs.version_major }}${{ env.version_minor }}, ${{ inputs.version_major }}${{ env.version_minor }}-${{ env.date_stamp }}"
+                [ "${{ inputs.version_major }}" != "10-kitten" ] && tags="${{ inputs.version_major }}, ${tags}"
+                [ "${{ inputs.version_major }}" = "${{ env.version_latest }}" ] && tags="latest, ${tags}" ;;
               minimal)
-                tags="${{ inputs.version_major }}-${{ matrix.image_types }}, ${{ inputs.version_major }}.${{ env.version_minor }}-${{ matrix.image_types }}, ${{ inputs.version_major }}.${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }}"
-                [ "${{ inputs.version_major }}" = "9" ] && tags="minimal, ${tags}" ;;
+                tags="${{ inputs.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}, ${{ inputs.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }}"
+                [ "${{ inputs.version_major }}" != "10-kitten" ] && tags="${{ inputs.version_major }}-${{ matrix.image_types }}, ${tags}"
+                [ "${{ inputs.version_major }}" = "${{ env.version_latest }}" ] && tags="minimal, ${tags}" ;;
               *)
             esac
 
