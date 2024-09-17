@@ -38,6 +38,7 @@ jobs:
         version_major:
           - 8
           - 9
+          - 10-kitten
 
     steps:
       -
