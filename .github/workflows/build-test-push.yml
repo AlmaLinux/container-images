@@ -61,8 +61,7 @@ env:
   # Registries list:
   # for production: docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux
   # for testing: quay.io/almalinuxautobot
-  # registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot' }}
-  registries: ${{ inputs.production && 'docker.io/ykohut, quay.io/ykohut, ghcr.io/yuravk' || 'quay.io/ykohut' }}
+  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot' }}
 
 jobs:
   build-test-push:
