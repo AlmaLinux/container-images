@@ -84,7 +84,7 @@ jobs:
             8)
               version_minor=".10" ;;
             9)
-              version_minor=".4"  ;;
+              version_minor=".5"  ;;
             10)
               version_minor=".0" ;;
             10-kitten)
