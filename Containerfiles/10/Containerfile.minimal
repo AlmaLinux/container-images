@@ -1,4 +1,4 @@
-ARG SYSBASE=quay.io/ykohut/almalinux:10
+ARG SYSBASE=quay.io/ykohut/almalinux:10-bootstrap
 FROM ${SYSBASE} as system-build
 
 RUN mkdir /mnt/sys-root; \
@@ -25,7 +25,7 @@ RUN mkdir /mnt/sys-root; \
     --nodocs \
     krb5-libs ; \
     dnf --installroot /mnt/sys-root clean all;
-# Additional hacks for kickstart file and backward compatable support
+# Additional hacks for kickstart file and backward compatible support
 RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/cache/dnf /mnt/sys-root/var/lib/dnf/repos; \
     rm -rf /mnt/sys-root/var/lib/dnf/history* /mnt/sys-root/var/log/hawkey.log /mnt/sys-root/boot /mnt/sys-root/dev/null /mnt/sys-root/run/*; \
     mkdir -p /mnt/sys-root/run/lock; \
