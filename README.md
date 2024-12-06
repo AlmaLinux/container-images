@@ -430,9 +430,9 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
     │   ├── Login to Quay.io
     │   ├── Login to Ghcr.io
     │   ├── Generate tags and prepare metadata to build and push
-    │   ├── Build images
+    │   ├── Build images and push to Client Library
+    │   ├── Prepare 'quay.io' tag
     │   ├── Test images
-    │   ├── Push images to Client Library
     │   ├── Extract RootFS (default and minimal only)
     │   ├── Change date stamp in Dockerfile (default and minimal only)
     │   ├── Commit and push minimal/*/* Dockerfile and RootFS (branch 9)"
@@ -559,30 +559,36 @@ The [docker/metadata-action@v5](https://github.com/docker/metadata-action) is us
           "quay.io/***/8-minimal:8.9-20240319",
         ],
 ```
-#### Step: Build images
+#### Step: Build images and push to Client Library
 
-The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used to build images. This step builds the images from corresponding [`Containerfile`](https://github.com/AlmaLinux/container-images/tree/main/Containerfiles), for specified `env.platforms` and uses tags from the previous step. After the successful building, the images are loaded into docker, but not pushed yet as they need to be tested first. AlmaLinux 8 minimal images `buildx` looks like this:
+The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used to build images. This step builds the images from corresponding [`Containerfile`](https://github.com/AlmaLinux/container-images/tree/main/Containerfiles), for specified `env.platforms` and uses tags from the previous step. After the successful building, images pushed built into *Client Library*.. AlmaLinux 8 minimal images `buildx` looks like this:
 ```sh
 /usr/bin/docker buildx build --file ./Containerfile.minimal ... \
  --platform linux/amd64,linux/ppc64le,linux/s390x,linux/arm64 \
  --provenance false ... \
  --tag docker.io/***/8-minimal:latest --tag docker.io/***/8-minimal:8 --tag docker.io/***/8-minimal:8.9 --tag docker.io/***/8-minimal:8.9-20240319 --tag quay.io/***/8-minimal:latest --tag quay.io/***/8-minimal:8 --tag quay.io/***/8-minimal:8.9 --tag quay.io/***/8-minimal:8.9-20240319 \
- --load \
  --metadata-file /home/runner/work/_temp/docker-actions-toolkit-*/metadata-file \
+ --push \
  https://github.com/***/container-images.git#270a6d3fd433cfa6c3e1fff5896a92d1ae2896be:Containerfiles/8
 ```
 `provenance: false` is to disable the [Provenance attestations](https://docs.docker.com/build/attestations/slsa-provenance/) as Quay.io registry doesn't support such kind of images data.
 
+#### Step: Prepare 'quay.io' tag
+
+The quay.io registry is mandatory now both for production and testing. The registry is a part of the tag, which is used to pull images for testing and rootfs extraction. The tag is set into corresponded `QUAY_IO_TAG` environment variable.
+
+The tag value looks like:
+```sh
+QUAY_IO_REGISTRY:version_major.version_minor-date_stamp
+```
+Examples: `quay.io/***/8-minimal:8.9-20240319`, or `quay.io/***/almalinux:8.9-20240319` if 'default' image
+
 #### Step: Test images
 
-Every image can be tested separately for each type and platform as each image is loaded into docker. Docker run images "by digest":
+Every image is tested separately for each type and platform as each image is loaded into docker. Docker run images "by tag":
 ```sh
-docker run --platform=${platform} ${{ steps.build-images.outputs.digest }}
+docker run --platform=${platform} ${{ env.QUAY_IO_TAG }} ...
 ```
-
-#### Step: Push images to Client Library
-
-The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used. This step pushes built images into *Client Library*. The options are the same as for **Build images** step.
 
 #### Step: Extract RootFS (default and minimal only)
 

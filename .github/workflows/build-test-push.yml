@@ -66,7 +66,7 @@ env:
 jobs:
   build-test-push:
     name: Deploy ${{ inputs.version_major }} ${{ matrix.image_types }} images
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -209,17 +209,40 @@ jobs:
             type=raw,value=${{ inputs.version_major }}${{ env.version_minor }}-${{ env.date_stamp }},enable=true
 
       -
-        name: Build images
+        name: Build images and push to Client Library
         id: build-images
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           provenance: false
           context: "{{defaultContext}}:Containerfiles/${{ inputs.version_major }}"
           file: ./Containerfile.${{ matrix.image_types }}
           platforms: ${{ env.platforms }}
-          push: false
-          load: true
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
+
+      -
+        name: Prepare 'quay.io' tag
+        # The tag is used to pull images from quay.io registry (which is mandatory)
+        if: contains(env.registries, 'quay.io')
+        id: quay-io-tag
+        run: |
+          REGISTRIES="${{ env.registries }}"
+          for REGISTRY in ${REGISTRIES//,/ }; do
+            [[ $REGISTRY = *'quay.io'* ]] && break
+            unset REGISTRY
+          done
+          [ "x${REGISTRY}" = "x" ] && exit 1
+
+          # 'default' images goes to $REGISTRY/almalinux
+          [ "${{ matrix.image_types }}" = "default" ] \
+            && IMAGE_NAME="$REGISTRY/almalinux" \
+            || IMAGE_NAME="$REGISTRY/${{ inputs.version_major }}-${{ matrix.image_types }}"
+          [ "x${IMAGE_NAME}" = "x" ] && exit 1
+
+          QUAY_IO_TAG="${IMAGE_NAME}:${{ inputs.version_major }}${{ env.version_minor }}-${{ env.date_stamp }}"
+
+          echo "[Debug] ${QUAY_IO_TAG}"
+          echo "QUAY_IO_TAG=${QUAY_IO_TAG}" >> $GITHUB_ENV
 
       -
         name: Test images
@@ -230,23 +253,13 @@ jobs:
           for platform in ${platforms//,/ }; do
             echo "Testing AlmaLinux ${{ inputs.version_major }} ${{ matrix.image_types }} for ${platform} image:"
 
-            docker run --platform=${platform} ${{ steps.build-images.outputs.digest }} /bin/bash -c " \
+            docker pull --platform=${platform} ${{ env.QUAY_IO_TAG }}
+
+            docker run --platform=${platform} ${{ env.QUAY_IO_TAG }} /bin/bash -c " \
             uname -m \
             && cat /etc/almalinux-release \
             && ( test "${{ matrix.image_types }}" != "micro" && rpm -q gpg-pubkey) || true "
           done
-
-      -
-        name: Push images to Client Library
-        id: push-images
-        uses: docker/build-push-action@v5
-        with:
-          provenance: false
-          context: "{{defaultContext}}:Containerfiles/${{ inputs.version_major }}"
-          file: ./Containerfile.${{ matrix.image_types }}
-          platforms: ${{ env.platforms }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
 
       -
         name: Extract RootFS (default and minimal only)
@@ -270,7 +283,7 @@ jobs:
           cd ${path}
 
           # Produce a tarred repository and save it to the "tar file".
-          docker save ${{ steps.build-images.outputs.digest }} -o ${tar_name}
+          docker save ${{ env.QUAY_IO_TAG }} -o ${tar_name}
 
           # Extract the "tar file"
           tar xf ${tar_name}
@@ -397,7 +410,7 @@ jobs:
     # 'default' or 'minimal' images only and 'Push to production' is checked
     if: ( inputs.type_default || inputs.type_minimal ) && inputs.production
     name: Optimize size of repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - build-test-push
     steps:
