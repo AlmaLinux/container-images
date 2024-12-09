@@ -2,8 +2,7 @@ Tags: {{ .tags }}
 GitFetch: refs/heads/{{ .version_major }}
 GitCommit: {{ .commit_hash }}
 amd64-Directory: {{ .image_type }}/amd64/
-amd64/v2-Directory: {{ .image_type }}/amd64_v2/
 arm64v8-Directory: {{ .image_type }}/arm64/
 ppc64le-Directory: {{ .image_type }}/ppc64le/
 s390x-Directory: {{ .image_type }}/s390x/
-Architectures: amd64, amd64/v2, arm64v8, ppc64le, s390x
+Architectures: amd64, arm64v8, ppc64le, s390x
