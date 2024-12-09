@@ -1,11 +1,11 @@
-ARG SYSBASE=quay.io/ykohut/almalinux:10
+ARG SYSBASE=quay.io/ykohut/almalinux:10-bootstrap
 FROM ${SYSBASE} AS system-build
 
 RUN mkdir -p /mnt/sys-root; \
     dnf install --installroot /mnt/sys-root coreutils-single glibc-minimal-langpack \
     --releasever 10 --setopt install_weak_deps=false --nodocs -y; \
     dnf --installroot /mnt/sys-root clean all;
-# Additional hacks for kickstart file and backward compatable support
+# Additional hacks for kickstart file and backward compatible support
 RUN rm -rf /mnt/sys-root/var/cache/dnf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/lib/dnf /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/lib/rpm/* ; \
     /bin/date +%Y%m%d_%H%M > /mnt/sys-root/etc/BUILDTIME ;  \
     echo '%_install_langs C.utf8' > /mnt/sys-root/etc/rpm/macros.image-language-conf; \

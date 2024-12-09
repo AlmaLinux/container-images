@@ -14,10 +14,11 @@ on:
         version_major:
           description: 'AlmaLinux major version'
           required: true
-          default: '9'
+          default: '10'
           type: choice
           options:
-            - "10-kitten"
+            - 10-kitten
+            - 10
             - 9
             - 8
 
@@ -146,7 +147,7 @@ jobs:
           cat << EOF > containerd-snapshotter.jq
           .features |= . + { "containerd-snapshotter": true }
           EOF
-          sudo jq -n -f containerd-snapshotter.jq > /etc/docker/daemon.json
+          sudo sh -c 'jq -n -f containerd-snapshotter.jq > /etc/docker/daemon.json'
           sudo systemctl restart docker
           docker info -f '{{ .DriverStatus }}'
 
