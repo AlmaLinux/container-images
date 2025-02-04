@@ -40,8 +40,8 @@ Each image pushed to the *Client Library* is built from a corresponding [Contain
 These files match [Dockerfile](https://docs.docker.com/reference/dockerfile/) standard and contain commands and instructions on how to install AlmaLinux's whole root filesystem in them.
 
 Images for the *Docker Official* Library are built using other Dockerfiles that are also designed for each AlmaLinux release but only `default` and `minimal` types:
-- 8 [default](https://github.com/yuravk/container-images/tree/8/default) and [minimal](https://github.com/yuravk/container-images/tree/8/minimal) per platform;
-- 9 [default](https://github.com/yuravk/container-images/tree/9/default) and [minimal](https://github.com/yuravk/container-images/tree/9/minimal) per platform.
+- 8 [default](https://github.com/almalinux/container-images/tree/8/default) and [minimal](https://github.com/almalinux/container-images/tree/8/minimal) per platform;
+- 9 [default](https://github.com/almalinux/container-images/tree/9/default) and [minimal](https://github.com/almalinux/container-images/tree/9/minimal) per platform.
 These Dockerfiles are to build images from scratch using platform's corresponding RootFS.
 
 ## What Container Images are built
@@ -258,7 +258,7 @@ COPY --from=system-build /mnt/sys-root/ /
 CMD ["/bin/bash"]
 ```
 
-This [`minimal/amd64/Dockerfile`](https://github.com/yuravk/container-images/blob/9/minimal/amd64/Dockerfile) file is a Dockerfile example for AlmaLinux release 9 `minimal` type and `amd64` (`x86_64`) platform used to build container image for the Docker *Official Library*:
+This [`minimal/amd64/Dockerfile`](https://github.com/almalinux/container-images/blob/9/minimal/amd64/Dockerfile) file is a Dockerfile example for AlmaLinux release 9 `minimal` type and `amd64` (`x86_64`) platform used to build container image for the Docker *Official Library*:
 ```Dockerfile
 # Tags: minimal, 9-minimal, 9.3-minimal, 9.3-minimal-20231124
 FROM scratch
@@ -269,7 +269,7 @@ CMD ["/bin/bash"]
 
 ### Template file for Docker *Library Definition*
 
-The Docker *Official Library* uses [Definition File](https://github.com/docker-library/official-images/blob/master/library/almalinux) to request building of official images. Changing the file triggers a new image(s) building on the Docker side. The [`docker-library-definition.tmpl`](https://github.com/yuravk/container-images/blob/docker-library/docker-library-definition.tmpl) template is used to generate the Definition file:
+The Docker *Official Library* uses [Definition File](https://github.com/docker-library/official-images/blob/master/library/almalinux) to request building of official images. Changing the file triggers a new image(s) building on the Docker side. The [`docker-library-definition.tmpl`](https://github.com/almalinux/container-images/blob/docker-library/docker-library-definition.tmpl) template is used to generate the Definition file:
 ```yaml
 Tags: {{ .tags }}
 GitFetch: refs/heads/{{ .version_major }}
@@ -606,7 +606,7 @@ The step is to extract RootFS from existing image's blobs:
 
 ❗ Skip this step if the image type is not 'default' or 'minimal'.
 
-The step changes (*# Tags* with date stamp) in corresponded `${images_type}/${platform}/Docker file` for AlmaLinux [release 8](https://github.com/yuravk/container-images/tree/8) an [release 9](https://github.com/yuravk/container-images/tree/9), which Docker will use to build images for the *Official Library*. An example is for AlmaLinux 9 minimal amd64 [`minimal/amd64/dockerfile`](https://github.com/yuravk/container-images/blob/9/minimal/amd64/Dockerfile) file:
+The step changes (*# Tags* with date stamp) in corresponded `${images_type}/${platform}/Docker file` for AlmaLinux [release 8](https://github.com/almalinux/container-images/tree/8) an [release 9](https://github.com/almalinux/container-images/tree/9), which Docker will use to build images for the *Official Library*. An example is for AlmaLinux 9 minimal amd64 [`minimal/amd64/dockerfile`](https://github.com/almalinux/container-images/blob/9/minimal/amd64/Dockerfile) file:
 ```docker
 # Tags: 8-minimal, 8.9-minimal, 8.9-minimal-20240319
 FROM scratch
