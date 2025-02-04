@@ -28,7 +28,7 @@ There are two workflows on GitHub Actions designed to achieve the idea:
 You can read more about how the workflows work in the [section](#workflows-jobs-and-steps) below.
 
 The AlmaLinux ***Client Library*** includes the following registries/organizations:
-- [Docker.io/almalinux](https://hub.docker.com/u/almalinux) (Sponsored by OSS)
+- [Docker.io/almalinux](https://hub.docker.com/u/almalinux) (Sponsored OSS)
 - [Quay.io/almalinuxorg](https://quay.io/organization/almalinuxorg)
 - [Ghcr.io/AlmaLinux](https://github.com/orgs/AlmaLinux/packages)
 
