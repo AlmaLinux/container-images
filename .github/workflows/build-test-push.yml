@@ -62,7 +62,7 @@ env:
   # Registries list:
   # for production: docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux
   # for testing: quay.io/almalinuxautobot
-  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot' }}
+  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux, git.almalinux.org/almalinux' || 'quay.io/almalinuxautobot' }}
 
 jobs:
   build-test-push:
@@ -195,6 +195,15 @@ jobs:
           registry: ghcr.io
           username: ${{ inputs.production && secrets.GIT_HUB_USERNAME || secrets.TEST_GITHUB_USERNAME }}
           password: ${{ inputs.production && secrets.GIT_HUB_TOKEN || secrets.TEST_GITHUB_TOKEN }}
+
+      -
+        name: Login to Git.AlmaLinux.org
+        if: contains(env.registries, 'git.almalinux.org')
+        uses: docker/login-action@v3
+        with:
+          registry: git.almalinux.org
+          username: ${{ inputs.production && secrets.GIT_ALMALINUX_ORG_USERNAME || secrets.TEST_GIT_ALMALINUX_ORG_USERNAME }}
+          password: ${{ inputs.production && secrets.GIT_ALMALINUX_ORG_TOKEN || secrets.TEST_GIT_ALMALINUX_ORG_TOKEN }}
 
       -
         name: Generate tags and prepare metadata to build and push
