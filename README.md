@@ -22,7 +22,7 @@ Personal, Organization or Enterprise account on GitHub is the only requirement. 
  The project utilizes [GitHub Actions](https://github.com/features/actions) to provide public, transparent and fast workflows that are easy to understand, use and modify.
 
 There are two workflows on GitHub Actions designed to achieve the idea:
-- Build, test, push all types of container images into the *Client Library*, and extract RootFS from `default` and `minimal` images.
+- Build, test, push all types of container images into the *Client Library*, and extract RootFS from `default` and `minimal` images. The workflow can be initiated manually, or runs as scheduled action.
 - Use these RootFS to request Docker to create images for the *Official Library*.
 
 You can read more about how the workflows work in the [section](#workflows-jobs-and-steps) below.
@@ -41,16 +41,19 @@ These files match [Dockerfile](https://docs.docker.com/reference/dockerfile/) st
 
 Images for the *Docker Official* Library are built using other Dockerfiles that are also designed for each AlmaLinux release but only `default` and `minimal` types:
 - 8 [default](https://github.com/almalinux/container-images/tree/8/default) and [minimal](https://github.com/almalinux/container-images/tree/8/minimal) per platform;
-- 9 [default](https://github.com/almalinux/container-images/tree/9/default) and [minimal](https://github.com/almalinux/container-images/tree/9/minimal) per platform.
+- 9 [default](https://github.com/almalinux/container-images/tree/9/default) and [minimal](https://github.com/almalinux/container-images/tree/9/minimal) per platform;
+- Kitten [default](https://github.com/almalinux/container-images/tree/10-kitten/default) and [minimal](https://github.com/almalinux/container-images/tree/10-kitten/minimal) per platform.
+
 These Dockerfiles are to build images from scratch using platform's corresponding RootFS.
 
 ## What Container Images are built
 
 ### AlmaLinux releases
 
-Container images are built for AlmaLinux OS 8 and 9. The Major version of the release must be set for the **Build, Test and Push** workflow. The Minor version is automatically set by the workflow as *the latest*.
+Container images are built for AlmaLinux OS 8, 9, Kitten and 10. The Major version of the release must be set for the **Build, Test and Push** workflow. The Minor version is automatically set by the workflow as *the latest*.
 
-**Publish Images** workflow pushes build requests to the Docker also for both AlmaLinux releases, 8 and 9.
+**Publish Images** workflow pushes build requests to the Docker for all AlmaLinux releases: 8, 9 and Kitten.
+AlmaLinux OS 10 Docker build requests are pushed as soon as the version is released.
 
 ### Image configuration types
 
@@ -68,9 +71,12 @@ AlmaLinux container images types match [Red Hat Universal Base Image](https://ca
 | docker platform | hardware name |
 | --------------- | ------------- |
 | linux/amd64     | x86_64        |
+| linux/amd64/v2  | x86_64 (v2)   |
 | linux/ppc64le   | ppc64le       |
 | linux/s390x     | s390x         |
 | linux/arm64     | aarch64       |
+
+`linux/amd64/v2` are for AlmaLinux Kitten and 10 releases only.
 
 The [**containerd image store store**](https://docs.docker.com/storage/containerd/) for Docker Engine together with `buildx` are used to build and push multiple platforms at once.
 
@@ -81,12 +87,20 @@ The following *repositories* are created on all registries ([Docker.io/almalinux
 - `/almalinux` - [Quay.io/almalinuxorg](https://quay.io/repository/almalinuxorg/almalinux) only. Is built from the `default` image.
 - `/8-base`
 - `/9-base`
+- `/10-base`
+- `/10-kitten-base`
 - `/8-init`
 - `/9-init`
+- `/10-init`
+- `/10-kitten-init`
 - `/8-micro`
 - `/9-micro`
+- `/10-micro`
+- `/10-kitten-micro`
 - `/8-minimal`
 - `/9-minimal`
+- `/10-minimal`
+- `/10-kitten-minimal`
 
 They are the *Client Library*.
 
@@ -115,6 +129,18 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 │       ├── build-test-push.yml
 │       └── publish-docker-library.yml
 ├── Containerfiles
+│   ├── 10
+│   │   ├── Containerfile.base
+│   │   ├── Containerfile.default
+│   │   ├── Containerfile.init
+│   │   ├── Containerfile.micro
+│   │   └── Containerfile.minimal
+│   ├── 10-kitten
+│   │   ├── Containerfile.base
+│   │   ├── Containerfile.default
+│   │   ├── Containerfile.init
+│   │   ├── Containerfile.micro
+│   │   └── Containerfile.minimal
 │   ├── 8
 │   │   ├── Containerfile.base
 │   │   ├── Containerfile.default
@@ -195,6 +221,82 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
     └── s390x
         ├── Dockerfile
         └── almalinux-9-minimal-s390x.tar.gz
+```
+
+4. Branch for AlmaLinux release '10'
+```sh
+.
+├── docker-library-definition.tmpl
+├── default
+│   ├── amd64
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-default-amd64.tar.gz
+│   ├── amd64_v2
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-default-amd64_v2.tar.gz
+│   ├── arm64
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-default-arm64.tar.gz
+│   ├── ppc64le
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-default-ppc64le.tar.gz
+│   └── s390x
+│       ├── Dockerfile
+│       └── almalinux-10-default-s390x.tar.gz
+└── minimal
+    ├── amd64
+    │   ├── Dockerfile
+    │   └── almalinux-10-minimal-amd64.tar.gz
+    ├── amd64_v2
+    │   ├── Dockerfile
+    │   └── almalinux-10-minimal-amd64_v2.tar.gz
+    ├── arm64
+    │   ├── Dockerfile
+    │   └── almalinux-10-minimal-arm64.tar.gz
+    ├── ppc64le
+    │   ├── Dockerfile
+    │   └── almalinux-10-minimal-ppc64le.tar.gz
+    └── s390x
+        ├── Dockerfile
+        └── almalinux-10-minimal-s390x.tar.gz
+```
+
+5. Branch for AlmaLinux Kitten
+```sh
+.
+├── docker-library-definition.tmpl
+├── default
+│   ├── amd64
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-kitten-default-amd64.tar.gz
+│   ├── amd64_v2
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-kitten-default-amd64_v2.tar.gz
+│   ├── arm64
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-kitten-default-arm64.tar.gz
+│   ├── ppc64le
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-kitten-default-ppc64le.tar.gz
+│   └── s390x
+│       ├── Dockerfile
+│       └── almalinux-10-kitten-default-s390x.tar.gz
+└── minimal
+    ├── amd64
+    │   ├── Dockerfile
+    │   └── almalinux-10-kitten-minimal-amd64.tar.gz
+    ├── amd64_v2
+    │   ├── Dockerfile
+    │   └── almalinux-10-kitten-minimal-amd64_v2.tar.gz
+    ├── arm64
+    │   ├── Dockerfile
+    │   └── almalinux-10-kitten-minimal-arm64.tar.gz
+    ├── ppc64le
+    │   ├── Dockerfile
+    │   └── almalinux-10-kitten-minimal-ppc64le.tar.gz
+    └── s390x
+        ├── Dockerfile
+        └── almalinux-10-kitten-minimal-s390x.tar.gz
 ```
 
 ### Workflow **.yml* files
@@ -286,7 +388,7 @@ Architectures: amd64, arm64v8, ppc64le, s390x
 ## Fork GitHub repositories
 
 Fork the following repositories:
-- [**container-images**](https://github.com/AlmaLinux/container-images), you will need the `main`, the `8` and the `9` branches.
+- [**container-images**](https://github.com/AlmaLinux/container-images), you will need the `main`, `8`, `9`, `10` and `10-kitten` branches.
 - [**docker-library**](https://github.com/docker-library/official-images)
 
 Read more about GitHub [forks here](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks/fork-a-repo).
@@ -297,9 +399,10 @@ Read more about GitHub [forks here](https://docs.github.com/en/pull-requests/col
 
 To set secrets needed for this repository, go to your GitHub account **Settings** -> expand **Secrets and variables** (located under the **Security** section) -> select **Actions**. Read more about [Github Secrets in Actions](https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions).
 
-The following *Repository secrets* are required. Set them with your personal data and ***only for registries you are using***.
+The following *Repository secrets* are required. Set them with your personal data.
 
-For production *Client Library* please define secrets:
+###  For production *Client Library* please define secrets, ***only for registries you are using***
+
 | Secret name            | Description          |
 | ---------------------- | -------------------- |
 | `DOCKERHUB_USERNAME`   | docker.io user       |
@@ -320,17 +423,31 @@ When creating a new personal access token on **GitHub**, please, select:
 - *write:packages* scope, to allow packages uploading to GitHub Package Registry;
 - *admin:org* scope, to allow Pull Request creation to [docker-library](https://github.com/docker-library/official-images).
 
+### To work with Mattermost
+
+| Secret name              | Description                     |
+| ------------------------ | ------------------------------- |
+| `MATTERMOST_WEBHOOK_URL` | Webhook URL for your Mattermost |
+
+## Set Action's variables
+
+To work with Mattermost
+| Variable name        | Description             |
+| -------------------- | ----------------------- |
+| `MATTERMOST_CHANNEL` | Mattermost channel name |
+
 ## Change registries list
 
 On needed registries create your own accounts in case you don't have any as you won't be able to use AlmaLinux accounts.
 
-According to your list of needed registries and knowing your user names edit the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow file (branch `master`):
+According to your list of needed registries and knowing your user names edit the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow file (branch `master`) and set list for both production and testing *Client Library*:
 ```yaml
-registries: 'docker.io/<user_name>, quay.io/<user_name>, ghcr.io/<user_name>'
+registries_production: 'docker.io/<user_name>, quay.io/<user_name>, ghcr.io/<user_name>'
+registries_testing: 'docker.io/<user_name>, quay.io/<user_name>, ghcr.io/<user_name>'
 ```
-Separate the registries with commas.
-
 `<user_name>` - is your user name on the specific registry.
+
+Separate the registries with commas. At least one registry in each list is required.
 
 ## Change platforms list
 
@@ -339,13 +456,13 @@ If you don't need to build images for all platforms, you can edit the list of pl
 ```yaml
 platforms: 'linux/amd64, linux/ppc64le, linux/s390x, linux/arm64'
 ```
-Separate the platforms with commas.
+Separate the platforms with commas. At least one platform in the list is required.
 
 ## Change image types list
 
 Edit the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow file (branch `master`) to change type of images which are built:
 
-- Add/modify/delete input for specific type name of image:
+- (workflow dispatch) add/modify/delete input for specific type name of image:
 ```yaml
         type_<type_name>:
           description: '<type_name>'
@@ -353,10 +470,21 @@ Edit the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/
           type: boolean
 ```
 
-- Add/modify/delete the image type in the matrix for the `build` job:
-```yaml
-image_types: ${{ fromJSON(format('["{0}"]', ( inputs.type_<type_name> && '<type_name>' ) )) }}
+- (workflow dispatch) add/modify/delete the image type for the build matrix:
+```sh
+workflow_dispatch)
+  ...
+  echo "image_types_matrix=$(jq -c <<< '[${{ format('"{0}"', ( inputs.type_default && '<type_name>' ) ) }}]')" >> $GITHUB_OUTPUT
+
 ```
+
+- (scheduled workflow) add/modify/delete from the list. Separate types with comma. Enclose each type into `"`:
+```yaml
+env:
+  ...
+  image_types: '"<type_name>", "<type_name>"'
+```
+
 Where `<type_name>` is the name of your image type.
 
 Default are: *base*, *default*, *init*, *micro*, *minimal*
@@ -365,7 +493,7 @@ Default are: *base*, *default*, *init*, *micro*, *minimal*
 
 If a new AlmaLinux major release is available, edit the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow file (branch `master`), to set this major version:
 
-- `inputs.version_major` like:
+- (workflow dispatch) `inputs.version_major` like:
 ```yaml
         version_major:
           description: 'AlmaLinux major version'
@@ -377,6 +505,14 @@ If a new AlmaLinux major release is available, edit the [`.github/workflows/buil
             - 9
             - 8
 ```
+
+- (scheduled workflow) `env.versions_list`. Separate types with comma. Enclose each version into `"`:
+```yaml
+env:
+  ...
+  versions_list: '"8", "9", "<version_latest>"'
+```
+
  - `env.version_latest` like:
 ```yaml
 version_latest: <version_latest>
@@ -402,6 +538,16 @@ Where `<8_minor>`, `<9_minor>`, `<10_minor>` are AlmaLinux's corresponding minor
 
 For example Minors are `10`, `4` or `1` for new **8.10**, **9.4** or **10.1** versions respectively.
 
+## To change scheduled time
+
+The workflow is designed to run every day at **04:00 UTC**. To change, edit the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow file (branch `master`) and set the time in Unix cron format, like:
+
+```yaml
+  schedule:
+    # run every day at 04:00 UTC
+    - cron:  '00 04 * * *'
+```
+
 ## Restrictions
 
 ❗ Only AlmaLinux organization members have access to create Pull Requests and publish container images into the Docker *Official Library*.
@@ -416,10 +562,16 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
 ```
     Build, test and push to the Client Library
     │
+    ├── Set matrix, prepare variables
+    │   ├── Set up job
+    │   ├── Set matrix, prepare variables
+    │   └── Complete job
+    │
     ├── Deploy 9 minimal images
     │   ├── Set up job
-    │   ├── DeployPrepare AlmaLinux Minor version number
-    │   ├── Prepare date stamp
+    │   ├── Prepare AlmaLinux Minor version number
+    │   ├── Check update
+    │   ├── Set platforms and registries
     │   ├── Generate list of Docker images to use as base name for tags
     │   ├── Enable containerd image store on Docker Engine
     │   ├── Checkout _container-images, branch 'main'
@@ -433,6 +585,7 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
     │   ├── Build images
     │   ├── Test images
     │   ├── Push images to Client Library
+    │   ├── Send notification to Mattermost
     │   ├── Extract RootFS (default and minimal only)
     │   ├── Change date stamp in Dockerfile (default and minimal only)
     │   ├── Commit and push minimal/*/* Dockerfile and RootFS (branch 9)"
@@ -444,32 +597,90 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
     │   ├── Post Checkout _container-images, branch 'main'
     │   └── Complete job
     │
-    └── Optimize size of repository
+    └── Optimize size of repository, branch '9'
+        ├── Set up job
         ├── Checkout almalinux/container-images, branch '9', path '9'
         ├── Optimize size of branch the '9'
-        └── Commit and push almalinux/container-images, branch '9'
+        ├── Commit and push almalinux/container-images, branch '9'
+        └── Complete job
 ```
 
-### Inputs
+### Inputs for workflow dispatch
 
 The workflow inputs are:
 - `production` - boolean '*Push to production registries*' with the default value `true` (checked). Container images are pushed into the production *Client Library*: [Docker.io/almalinux](https://hub.docker.com/u/almalinux), [Quay.io/almalinuxorg](https://quay.io/organization/almalinuxorg) and [Ghcr.io/AlmaLinux](https://github.com/orgs/AlmaLinux/packages). Otherwise, images are pushed into the testing *Client Library*: [Quay.io/almalinuxautobot](https://quay.io/organization/almalinuxautobot)
 
-- `version_major` - dropdown 'AlmaLinux major version' with the default value `9`. This is a major number of AlmaLinux version to build images for.
+- `notify_mattermost` - boolean '*Send notification to Mattermost*' with the default value `false` (not checked). Determines whether to send notification to channel `vars.MATTERMOST_CHANNEL` using `secrets.MATTERMOST_WEBHOOK_URL`
 
 - Checklist of image types: *base*, *default*, *init*, *micro*, *minimal*. At least one should be checked.
+
+- `version_major` - dropdown 'AlmaLinux major version' with the default value `9`. This is a major number of AlmaLinux version to build images for.
+
+### Environment variables which affect all jobs
+
+- `version_latest` - AlmaLinux version for which the `latest` tag is set. Now is set to `9`
+
+- `platforms` - comma separated list of platforms
+
+- `registries_production` - comma separated list of production *Client Library* to push images
+
+- `registries_testing` - comma separated list of testing *Client Library* to push images
+
+### Job: Set matrix, prepare variables
+
+#### Step: Set matrix, prepare variables
+
+The step sets:
+
+- matrix for the '**Deploy *version_major* *image_types* images**' job based on image types from `type_*` inputs for workflow dispatch, or predefined via `image_types` environment variable for scheduled workflow
+
+- matrix based on *version_major* from `version_major` input for  workflow dispatch, or predefined versions via `versions_list` environment variable for scheduled workflow
+
+- `production` - environment variable value based on corresponded input `true` or `false` for workflow dispatch, or with default `false` value for scheduled workflow
+
+- `notify_mattermost` - environment variable value based on corresponded input `true` or `false` for workflow dispatch, or with default `true` value for scheduled workflow
+
+- `date_time_stamp` - in format *%Y%m%d%H%M%S*, used for Mattermost notifications
+
+- `date_stamp` - in format *YYYYMMDD*, used in image tags
+
+- `time_stamp` - in format *%H:%M:%S*, used in commit messages
 
 ### Job: Deploy *version_major* *image_types* images
 
 Job proceeds to input `version_major` and iterates with selected `image_types` using matrix. Multiple jobs run simultaneously for each image type.
 
-#### Step: DeployPrepare AlmaLinux Minor version number
+#### Step: Prepare AlmaLinux Minor version number
 
 The step sets AlmaLinux `version_minor` according to set on inputs `version_major`.
 
-#### Step: Prepare date stamp
+#### Step: Check update
 
-Generates `date_stamp` in format *YYYYMMDD*. It is used in image tags.
+The step runs:
+```sh
+dnf check-update --secseverity=Important
+```
+
+Based on its exit code (please read more at [Check-Update Command](https://dnf.readthedocs.io/en/latest/command_ref.html#check-update-command-label)), determines if there any packages' *Important* updates are available, and for scheduled workflow continue or not with image(s) building.
+
+Exit codes:
+```
+0   - no updates
+100 - updates available
+125 - tag/platform not found
+127 - command not found
+255 - workflow_dispatch run
+```
+
+In  dispatch mode, image(s) are built regardless of the presence of *Important* updates.
+
+The command runs inside podman container pulling the most recent `quay.io/almalinuxorg/almalinux:${version_major}` image.
+
+#### Step: Set platforms and registries
+
+ - Extends `platforms` list with `linux/amd64/v2` if Kitten or 10
+
+ - Set `registries` into `registries_production` if production *Client Library*, and into `registries_testing` if scheduled workflow or testing *Client Library*.
 
 #### Step: Generate list of Docker images to use as base name for tags
 
@@ -584,6 +795,36 @@ docker run --platform=${platform} ${{ steps.build-images.outputs.digest }}
 
 The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used. This step pushes built images into *Client Library*. The options are the same as for **Build images** step.
 
+#### Step: Send notification to Mattermost
+
+The [mattermost/action-mattermost-notify@master](https://github.com/mattermost/action-mattermost-notify/tree/master/) is used.
+
+Runs only if `notify_mattermost` input is `true` (checked) or on scheduled workflow.
+
+Runs with:
+- `MATTERMOST_WEBHOOK_URL` workflow secret
+- `MATTERMOST_CHANNEL` workflow variable
+- `MATTERMOST_USERNAME` set via predefined `github.triggering_actor` variable
+
+Example of message in a channel about AlmaLinux 9.5, micro image build:
+___
+**AlmaLinux OS 9.5** Container Image, build `20250411091645`, generated by the [GitHub Action](https://github.com/AlmaLinux/container-images/actions/runs/14399603789)
+
+:almalinux: micro
+
+Platforms:
+```
+linux/amd64, linux/ppc64le, linux/s390x, linux/arm64
+```
+Tags:
+```
+quay.io/almalinuxorg/9-micro:latest
+quay.io/almalinuxorg/9-micro:9
+quay.io/almalinuxorg/9-micro:9.5
+quay.io/almalinuxorg/9-micro:9.5-20250411
+```
+___
+
 #### Step: Extract RootFS (default and minimal only)
 
 ❗ Skip this step if the image type is not 'default' or 'minimal'.
@@ -614,7 +855,7 @@ ADD almalinux-9-minimal-amd64.tar.xz /
 
 CMD ["/bin/bash"]
 ```
-The change indicates that a new `default` and/or `minimal` container image was pushed to the *Client Library* and should be requested to be built by Docker. The change will later be committed to the `8` or `9` branch.
+The change indicates that a new `default` and/or `minimal` container image was pushed to the *Client Library* and should be requested to be built by Docker. The change will later be committed to the corresponded branch: `8`, `9`, `10` or `10-kitten`.
 
 > It will try to pull recent changes (before push) with `--rebase --autostash`
 
@@ -632,7 +873,7 @@ AlmaLinux ${version_major}-${images_type} image build as of ${date_stamp} (with 
 ```
 It includes the AlmaLinux version major, image type, build date, and reference to this GitHub Action.
 
-### Job: Optimize size of repository
+### Job: Optimize size of repository, branch '${version_major}'
 
 ❗ Skip the job if the image type is not 'default' or 'minimal', or '*Push to production registries*' is not checked (`inputs.production` set to `false`.)
 
@@ -662,6 +903,13 @@ Tree illustration of the workflow Jobs and Steps for AlmaLinux 9 minimal image:
 ```
 Publish images to the Docker Library
 │
+├── 10-kitten default definition preparing
+.
+.
+.
+├── 10-kitten minimal definition preparing
+.
+.
 ├── 8 default definition preparing
 .
 .
