@@ -11,6 +11,12 @@ on:
           type: boolean
           default: false
 
+        notify_mattermost:
+          description: 'Send notification to Mattermost'
+          required: true
+          type: boolean
+          default: false
+
         version_major:
           description: 'AlmaLinux major version'
           required: true
@@ -52,36 +58,98 @@ on:
           type: boolean
           default: true
 
+  schedule:
+    # run every day at 04:00 UTC
+    - cron:  '00 04 * * *'
+
 env:
+  # List of versions to build on schedule
+  # TODO: add 10 when it is released
+  # Kitten should not be built on schedule
+  versions_list: '"8", "9"'
+
+  # List image types to build on schedule
+  image_types: '"default", "minimal", "micro", "base", "init"'
+
   # Latest version
   version_latest: 9
 
-  # Platforms list: linux/amd64, linux/ppc64le, linux/s390x, linux/arm64
-  platforms: ${{ contains(inputs.version_major, '10') && 'linux/amd64/v2, linux/amd64, linux/ppc64le, linux/s390x, linux/arm64' || 'linux/amd64, linux/ppc64le, linux/s390x, linux/arm64' }}
+  # Platforms list
+  platforms: 'linux/amd64, linux/ppc64le, linux/s390x, linux/arm64'
 
-  # Registries list:
-  # for production: docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux
-  # for testing: quay.io/almalinuxautobot
-  registries: ${{ inputs.production && 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux' || 'quay.io/almalinuxautobot' }}
+  # Registries lists
+  registries_production: 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux'
+  registries_testing: 'quay.io/almalinuxautobot'
+
 
 jobs:
-  build-test-push:
-    name: Deploy ${{ inputs.version_major }} ${{ matrix.image_types }} images
+  init-data:
+    name: Set matrix, prepare variables
     runs-on: ubuntu-24.04
+    outputs:
+      version_major_matrix: ${{ steps.init-data.outputs.version_major_matrix }}
+      image_types_matrix: ${{ steps.init-data.outputs.image_types_matrix }}
+      production: ${{ steps.init-data.outputs.production }}
+      notify_mattermost: ${{ steps.init-data.outputs.notify_mattermost }}
+      date_time_stamp: ${{ steps.init-data.outputs.date_time_stamp }}
+      date_stamp: ${{ steps.init-data.outputs.date_stamp }}
+      time_stamp: ${{ steps.init-data.outputs.time_stamp }}
+
+    steps:
+      - name: Set matrix, prepare variables
+        id: init-data
+        run: |
+          # Set matrix, prepare variables
+          case ${{ github.event_name }} in
+            workflow_dispatch)
+              # Set image types matrix based on boolean inputs.type_* with true value
+              echo "image_types_matrix=$(jq -c <<< '[${{ format('"{0}", "{1}", "{2}", "{3}", "{4}"', ( inputs.type_default && 'default' ), ( inputs.type_minimal && 'minimal' ), ( inputs.type_micro && 'micro' ), ( inputs.type_base && 'base' ), ( inputs.type_init && 'init' ) ) }}]')" >> $GITHUB_OUTPUT
+              echo "version_major_matrix=$(jq -c <<< '["${{ inputs.version_major }}"]')" >> $GITHUB_OUTPUT
+              echo "production=${{ inputs.production }}" >> $GITHUB_OUTPUT
+              echo "notify_mattermost=${{ inputs.notify_mattermost }}" >> $GITHUB_OUTPUT
+              ;;
+            schedule)
+              # Set image types matrix based on the environment variable image_types: '"type1", "type2"'
+              echo "image_types_matrix=$(jq -c <<< '[${{ env.image_types }}]')" >> $GITHUB_OUTPUT
+              echo "version_major_matrix=$(jq -c <<< '[${{ env.versions_list }}]')" >> $GITHUB_OUTPUT
+              echo "production=false" >> $GITHUB_OUTPUT       # only testing if scheduled
+              echo "notify_mattermost=true" >> $GITHUB_OUTPUT # always notify if scheduled
+              ;;
+          esac
+
+          # date and time stamps
+          date_time_stamp=$(date -u '+%Y%m%d%H%M%S')
+          date_stamp=${date_time_stamp:0:-6}
+          time_stamp=${date_time_stamp:8}
+          time_stamp="${time_stamp:0:2}:${time_stamp:2:2}:${time_stamp:4:2}"
+
+          echo "date_time_stamp=${date_time_stamp}" >> "$GITHUB_OUTPUT"
+          echo "date_stamp=${date_stamp}" >> "$GITHUB_OUTPUT"
+          echo "time_stamp=${time_stamp}" >> "$GITHUB_OUTPUT"
+
+  build-test-push:
+    name: Deploy ${{ matrix.version_major }} ${{ matrix.image_types }} images
+    runs-on: ubuntu-24.04
+    needs: [init-data]
     strategy:
       fail-fast: false
       matrix:
-        # Set image types matrix based on boolean inputs.type_* with true value
-        image_types: ${{ fromJSON(format('["{0}", "{1}", "{2}", "{3}", "{4}"]', ( inputs.type_default && 'default' ), ( inputs.type_minimal && 'minimal' ), ( inputs.type_micro && 'micro' ), ( inputs.type_base && 'base' ), ( inputs.type_init && 'init' ) )) }}
+        version_major: ${{ fromJSON(needs.init-data.outputs.version_major_matrix) }}
+        image_types: ${{ fromJSON(needs.init-data.outputs.image_types_matrix) }}
         exclude:
           - image_types: 'false'
+    env:
+      date_time_stamp: ${{ needs.init-data.outputs.date_time_stamp }}
+      date_stamp: ${{ needs.init-data.outputs.date_stamp }}
+      time_stamp: ${{ needs.init-data.outputs.time_stamp }}
+      notify_mattermost: ${{ needs.init-data.outputs.notify_mattermost }}
+      production: ${{ needs.init-data.outputs.production }}
 
     steps:
-
       -
         name: Prepare AlmaLinux Minor version number
         run: |
-          case ${{ inputs.version_major }} in
+          case ${{ matrix.version_major }} in
             8)
               version_minor=".10" ;;
             9)
@@ -91,34 +159,56 @@ jobs:
             10-kitten)
               version_minor= ;;
             *)
-              echo "Almalinux ${{ inputs.version_major }} is not supported!" && false
+              echo "Almalinux ${{ matrix.version_major }} is not supported!" && false
           esac
           echo "version_minor=${version_minor}" >> $GITHUB_ENV
 
-          # [Debug]
-          echo "version_minor=${version_minor}"
+      -
+        name: Check update
+        id: check-update
+        run: |
+          # dnf check-update --secseverity=Important
+          # exit codes:
+          #   0 - no updates
+          #   100 - updates available
+          #   125 - tag not found
+          #   127 - command not found
+          #   255 - workflow_dispatch run
+          check_update=0
+          podman run --quiet --rm quay.io/almalinuxorg/almalinux:${{ matrix.version_major }} \
+            dnf check-update --secseverity=Important || \
+            check_update=$?
+          [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && \
+            check_update=255
+
+          echo "check_update=${check_update}" >> "$GITHUB_ENV"
+          echo "Exit code: '$check_update'"
 
       -
-        name: Prepare date stamp
-        id: date_stamp
+        name: Set platforms and registries
+        if: env.check_update != 0
         run: |
-          # date stamp
-          date_stamp=$(date -u '+%Y%m%d')
-          echo "date_stamp=${date_stamp}" >> $GITHUB_ENV
-          echo "date_stamp=${date_stamp}" >> "$GITHUB_OUTPUT"
-          [ -z "$date_stamp-x" ] && false
+            # Platforms
+            platforms="${{ env.platforms }}"
+            [[ "${{ matrix.version_major }}" =~ "10" ]] && \
+              platforms="linux/amd64/v2, ${platforms}"
+            echo "platforms=${platforms}" >> $GITHUB_ENV
 
-          # [Debug]
-          echo "date_stamp=${date_stamp}"
+            # Registries
+            registries="${{ env.registries_testing }}"
+            [[ "${{ needs.init-data.outputs.production }}" == "true" ]] && \
+              registries="${{ env.registries_production }}"
+            echo "registries=${registries}" >> $GITHUB_ENV
 
       -
         name: Generate list of images to use as base name for tags
+        if: env.check_update != 0
         run: |
           # list of registries to push to
           REGISTRIES="${{ env.registries }}"
 
           IMAGE_NAMES=
-          # generate image names in format $REGISTRY/almalinux or $REGISTRY/${{ inputs.version_major }}-${{ matrix.image_types }}
+          # generate image names in format $REGISTRY/almalinux or $REGISTRY/${{ matrix.version_major }}-${{ matrix.image_types }}
           # image names are used by docker/metadata-action to set 'images'
           for REGISTRY in ${REGISTRIES//,/ }; do
             # 'default' images should not go to docker.io
@@ -127,7 +217,7 @@ jobs:
             # 'default' images goes to $REGISTRY/almalinux
             [ "${{ matrix.image_types }}" = "default" ] \
               && IMAGE_NAME="$REGISTRY/almalinux" \
-              || IMAGE_NAME="$REGISTRY/${{ inputs.version_major }}-${{ matrix.image_types }}"
+              || IMAGE_NAME="$REGISTRY/${{ matrix.version_major }}-${{ matrix.image_types }}"
             IMAGE_NAMES="${IMAGE_NAMES} ${IMAGE_NAME}"
             unset IMAGE_NAME
           done
@@ -142,6 +232,7 @@ jobs:
 
       -
         name: Enable containerd image store on Docker Engine
+        if: env.check_update != 0
         run: |
           # JQ file to switch into containerd image store
           cat << EOF > containerd-snapshotter.jq
@@ -153,51 +244,56 @@ jobs:
 
       -
         name: Checkout ${{ github.repository }}, branch 'main'
+        if: env.check_update != 0
         uses: actions/checkout@v4
 
       -
-        name: Checkout ${{ github.repository }}, branch '${{ inputs.version_major }}', path '${{ inputs.version_major }}'
+        name: Checkout ${{ github.repository }}, branch '${{ matrix.version_major }}', path '${{ matrix.version_major }}'
+        if: env.check_update != 0
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version_major }}
-          path: ${{ inputs.version_major }}
+          ref: ${{ matrix.version_major }}
+          path: ${{ matrix.version_major }}
 
       -
         name: Set up QEMU
+        if: env.check_update != 0
         uses: docker/setup-qemu-action@v3
       -
         name: Set up Docker Buildx
+        if: env.check_update != 0
         uses: docker/setup-buildx-action@v3
 
       -
         name: Login to Docker.io
-        if: contains(env.registries, 'docker.io')
+        if: contains(env.registries, 'docker.io') && env.check_update != 0
         uses: docker/login-action@v3
         with:
           registry: docker.io
-          username: ${{ inputs.production && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
-          password: ${{ inputs.production && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
+          username: ${{ env.production && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
+          password: ${{ env.production && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
 
       -
         name: Login to Quay.io
-        if: contains(env.registries, 'quay.io')
+        if: contains(env.registries, 'quay.io') && env.check_update != 0
         uses: docker/login-action@v3
         with:
           registry: quay.io
-          username: ${{ inputs.production && secrets.QUAY_IO_USERNAME || secrets.TEST_QUAY_IO_USERNAME }}
-          password: ${{ inputs.production && secrets.QUAY_IO_CLI_PASSWORD || secrets.TEST_QUAY_IO_CLI_PASSWORD }}
+          username: ${{ env.production && secrets.QUAY_IO_USERNAME || secrets.TEST_QUAY_IO_USERNAME }}
+          password: ${{ env.production && secrets.QUAY_IO_CLI_PASSWORD || secrets.TEST_QUAY_IO_CLI_PASSWORD }}
 
       -
         name: Login to Ghcr.io
-        if: contains(env.registries, 'ghcr.io')
+        if: contains(env.registries, 'ghcr.io') && env.check_update != 0
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ inputs.production && secrets.GIT_HUB_USERNAME || secrets.TEST_GITHUB_USERNAME }}
-          password: ${{ inputs.production && secrets.GIT_HUB_TOKEN || secrets.TEST_GITHUB_TOKEN }}
+          username: ${{ env.production && secrets.GIT_HUB_USERNAME || secrets.TEST_GITHUB_USERNAME }}
+          password: ${{ env.production && secrets.GIT_HUB_TOKEN || secrets.TEST_GITHUB_TOKEN }}
 
       -
         name: Generate tags and prepare metadata to build and push
+        if: env.check_update != 0
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -206,18 +302,19 @@ jobs:
 
           # list of tags
           tags: |
-            type=raw,value=latest,enable=${{ matrix.image_types != 'default' || ( matrix.image_types == 'default' && inputs.version_major == env.version_latest ) }}
-            type=raw,value=${{ inputs.version_major }},enable=true
-            type=raw,value=${{ inputs.version_major }}${{ env.version_minor }},enable=true
-            type=raw,value=${{ inputs.version_major }}${{ env.version_minor }}-${{ env.date_stamp }},enable=true
+            type=raw,value=latest,enable=${{ matrix.image_types != 'default' || ( matrix.image_types == 'default' && matrix.version_major == env.version_latest ) }}
+            type=raw,value=${{ matrix.version_major }},enable=true
+            type=raw,value=${{ matrix.version_major }}${{ env.version_minor }},enable=true
+            type=raw,value=${{ matrix.version_major }}${{ env.version_minor }}-${{ env.date_stamp }},enable=true
 
       -
         name: Build images
+        if: env.check_update != 0
         id: build-images
         uses: docker/build-push-action@v5
         with:
           provenance: false
-          context: "{{defaultContext}}:Containerfiles/${{ inputs.version_major }}"
+          context: "{{defaultContext}}:Containerfiles/${{ matrix.version_major }}"
           file: ./Containerfile.${{ matrix.image_types }}
           platforms: ${{ env.platforms }}
           push: false
@@ -226,12 +323,13 @@ jobs:
 
       -
         name: Test images
+        if: env.check_update != 0
         id: test-images
         run: |
           # [Test]
           platforms="${{ env.platforms }}"
           for platform in ${platforms//,/ }; do
-            echo "Testing AlmaLinux ${{ inputs.version_major }} ${{ matrix.image_types }} for ${platform} image:"
+            echo "Testing AlmaLinux ${{ matrix.version_major }} ${{ matrix.image_types }} for ${platform} image:"
 
             docker run --platform=${platform} ${{ steps.build-images.outputs.digest }} /bin/bash -c " \
             uname -m \
@@ -241,30 +339,52 @@ jobs:
 
       -
         name: Push images to Client Library
+        if: env.check_update != 0
         id: push-images
         uses: docker/build-push-action@v5
         with:
           provenance: false
-          context: "{{defaultContext}}:Containerfiles/${{ inputs.version_major }}"
+          context: "{{defaultContext}}:Containerfiles/${{ matrix.version_major }}"
           file: ./Containerfile.${{ matrix.image_types }}
           platforms: ${{ env.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
 
       -
+        name: Send notification to Mattermost
+        uses: mattermost/action-mattermost-notify@master
+        if: steps.push-images.outcome == 'success' && env.notify_mattermost == 'true' && env.check_update != 0
+        with:
+          MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
+          MATTERMOST_CHANNEL: ${{ vars.MATTERMOST_CHANNEL }}
+          MATTERMOST_USERNAME: ${{ github.triggering_actor }}
+          TEXT: |
+            **AlmaLinux OS ${{ matrix.version_major }}${{ env.version_minor }}** Container Image, build `${{ env.date_time_stamp }}`, generated by the [GitHub Action](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            :almalinux: **${{ matrix.image_types }}**
+            - Platforms:
+              ```
+              ${{ env.platforms}}
+              ```
+            - Tags:
+              ```
+              ${{ steps.meta.outputs.tags }}
+              ```
+
+      -
         name: Extract RootFS (default and minimal only)
         id: extract-rootfs
         # 'default' or 'minimal' images only go to Docker Official Library
-        if: matrix.image_types == 'default' || matrix.image_types == 'minimal'
+        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.check_update != 0
         run: |
           # [RootFS]
 
           # File name for RootFS file (packed with tag + Xz)
-          name=almalinux-${{ inputs.version_major }}-${{ matrix.image_types }}
+          name=almalinux-${{ matrix.version_major }}-${{ matrix.image_types }}
           pwd=$( pwd )
           path=${pwd}/${name}
           almalinux_release='almalinux-release'
-          [ "${{ inputs.version_major }}" = "10-kitten" ] && almalinux_release='almalinux-kitten-release'
+          [ "${{ matrix.version_major }}" = "10-kitten" ] && almalinux_release='almalinux-kitten-release'
 
           # The "tar file" for 'docker save' to write to
           tar_name=${pwd}/${name}.tar
@@ -321,7 +441,7 @@ jobs:
 
               # Copy the "taken RootFS" into corresponded .tar.xz
               cp -av ${file} ${name}-${platform}.tar.gz
-              zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/${{ inputs.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
+              zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/${{ matrix.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
 
             fi
           done
@@ -330,13 +450,13 @@ jobs:
           rm -rf ${path}
 
           echo "[Debug]"
-          ls -1 ${pwd}/${{ inputs.version_major }}/${{ matrix.image_types }}/*/*.tar.xz
+          ls -1 ${pwd}/${{ matrix.version_major }}/${{ matrix.image_types }}/*/*.tar.xz
 
       # Change date stamp in '${version_major}/${image_types}/${arch}/Dockerfile'
       -
         name: Change date stamp in Dockerfile (default and minimal only)
         # 'default' or 'minimal' images only go to Docker Official Library
-        if: matrix.image_types == 'default' || matrix.image_types == 'minimal'
+        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.check_update != 0
         run: |
           # [Dockerfile]
 
@@ -344,17 +464,17 @@ jobs:
           for platform in ${platforms//,/ }; do
             arch=${platform#linux/}
             arch=${arch/\//_}
-            dockerfile=${{ inputs.version_major }}/${{ matrix.image_types }}/${arch}/Dockerfile
+            dockerfile=${{ matrix.version_major }}/${{ matrix.image_types }}/${arch}/Dockerfile
 
             case ${{ matrix.image_types }} in
               default)
-                tags="${{ inputs.version_major }}${{ env.version_minor }}, ${{ inputs.version_major }}${{ env.version_minor }}-${{ env.date_stamp }}"
-                [ "${{ inputs.version_major }}" != "10-kitten" ] && tags="${{ inputs.version_major }}, ${tags}"
-                [ "${{ inputs.version_major }}" = "${{ env.version_latest }}" ] && tags="latest, ${tags}" ;;
+                tags="${{ matrix.version_major }}${{ env.version_minor }}, ${{ matrix.version_major }}${{ env.version_minor }}-${{ env.date_stamp }}"
+                [ "${{ matrix.version_major }}" != "10-kitten" ] && tags="${{ matrix.version_major }}, ${tags}"
+                [ "${{ matrix.version_major }}" = "${{ env.version_latest }}" ] && tags="latest, ${tags}" ;;
               minimal)
-                tags="${{ inputs.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}, ${{ inputs.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }}"
-                [ "${{ inputs.version_major }}" != "10-kitten" ] && tags="${{ inputs.version_major }}-${{ matrix.image_types }}, ${tags}"
-                [ "${{ inputs.version_major }}" = "${{ env.version_latest }}" ] && tags="minimal, ${tags}" ;;
+                tags="${{ matrix.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}, ${{ matrix.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }}"
+                [ "${{ matrix.version_major }}" != "10-kitten" ] && tags="${{ matrix.version_major }}-${{ matrix.image_types }}, ${tags}"
+                [ "${{ matrix.version_major }}" = "${{ env.version_latest }}" ] && tags="minimal, ${tags}" ;;
               *)
             esac
 
@@ -365,64 +485,54 @@ jobs:
             cat ${dockerfile}
           done
 
-      -
-        name: "Prepare time stamp"
-        id: time_stamp
-        run: |
-          # time stamp
-          time_stamp=$(date -u '+%H:%M:%S')
-          echo "time_stamp=${time_stamp}" >> $GITHUB_ENV
-          echo "time_stamp=${time_stamp}" >> "$GITHUB_OUTPUT"
-          [ -z "$time_stamp-x" ] && false
-
-          # [Debug]
-          echo "time_stamp=${time_stamp}"
-
       # Commit '${version_major}/${image_types}/${arch}/*'
       -
-        name: "Commit and push ${{ matrix.image_types }}/*/* Dockerfile and RootFS (branch ${{ inputs.version_major }})"
+        name: "Commit and push ${{ matrix.image_types }}/*/* Dockerfile and RootFS (branch ${{ matrix.version_major }})"
         # 'default' or 'minimal' images only and 'Push to production' is checked
-        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && inputs.production
+        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.production && env.check_update != 0
         uses: EndBug/add-and-commit@v9
         with:
           default_author: user_info
-          new_branch: ${{ inputs.version_major }}
-          cwd: ${{ inputs.version_major }}
+          new_branch: ${{ matrix.version_major }}
+          cwd: ${{ matrix.version_major }}
           pull: '--rebase --autostash'
-          message: "AlmaLinux ${{ inputs.version_major }} ${{ matrix.image_types }} - ${{ env.date_stamp }} ${{ env.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          message: "AlmaLinux ${{ matrix.version_major }} ${{ matrix.image_types }} - ${{ env.date_stamp }} ${{ env.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           push: true
 
-    outputs:
-      date_stamp: ${{ steps.date_stamp.outputs.date_stamp }}
-      time_stamp: ${{ steps.time_stamp.outputs.time_stamp }}
 
   optimize-repo-size:
-    # 'default' or 'minimal' images only and 'Push to production' is checked
-    if: ( inputs.type_default || inputs.type_minimal ) && inputs.production
-    name: Optimize size of repository
+    # 'default' or 'minimal' images only and 'Push to production' is checked or scheduled run
+    if: ( contains(needs.init-data.outputs.image_types_matrix, 'default') || contains(needs.init-data.outputs.image_types_matrix, 'minimal') ) && needs.init-data.outputs.production == 'true'
+    name: Optimize size of repository, branch '${{ matrix.version_major }}'
     runs-on: ubuntu-24.04
     needs:
+      - init-data
       - build-test-push
+    strategy:
+      fail-fast: false
+      matrix:
+        version_major: ${{ fromJSON(needs.init-data.outputs.version_major_matrix) }}
+
     steps:
 
       -
-        name: Checkout ${{ github.repository }}, branch '${{ inputs.version_major }}', path '${{ inputs.version_major }}'
+        name: Checkout ${{ github.repository }}, branch '${{ matrix.version_major }}', path '${{ matrix.version_major }}'
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.version_major }}
-          path: ${{ inputs.version_major }}
+          ref: ${{ matrix.version_major }}
+          path: ${{ matrix.version_major }}
 
       -
-        name: Optimize size of branch the '${{ inputs.version_major }}'
+        name: Optimize size of branch the '${{ matrix.version_major }}'
         run: |
-          date_stamp=${{ needs.build-test-push.outputs.date_stamp }}
-          cd ${{ inputs.version_major }}
+          date_stamp=${{ needs.init-data.outputs.date_stamp }}
+          cd ${{ matrix.version_major }}
 
-          echo "Prepare new branch 'tmp' based on ${{ inputs.version_major }}"
+          echo "Prepare new branch 'tmp' based on ${{ matrix.version_major }}"
           git checkout -b tmp
 
-          echo "Delete local branch '${{ inputs.version_major }}'"
-          git branch -D ${{ inputs.version_major }}
+          echo "Delete local branch '${{ matrix.version_major }}'"
+          git branch -D ${{ matrix.version_major }}
 
           echo "Preserve resent data"
           mkdir ../tmp-${date_stamp}
@@ -430,8 +540,8 @@ jobs:
           mv ./default ../tmp-${date_stamp}/
           mv ./minimal ../tmp-${date_stamp}/
 
-          echo "Crete orphan branch '${{ inputs.version_major }}'"
-          git checkout --orphan ${{ inputs.version_major }}
+          echo "Crete orphan branch '${{ matrix.version_major }}'"
+          git checkout --orphan ${{ matrix.version_major }}
 
           echo "Clean up"
           git rm --cached -r .
@@ -446,10 +556,10 @@ jobs:
           git status
 
       -
-        name: Commit and push ${{ github.repository }}, branch '${{ inputs.version_major }}'
+        name: Commit and push ${{ github.repository }}, branch '${{ matrix.version_major }}'
         uses: EndBug/add-and-commit@v9
         with:
           default_author: user_info
-          message: "Update AlmaLinux ${{ inputs.version_major }} - ${{ needs.build-test-push.outputs.date_stamp }} ${{ needs.build-test-push.outputs.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-          push: '--force --set-upstream origin ${{ inputs.version_major }}'
-          cwd: ${{ inputs.version_major }}
+          message: "Update AlmaLinux ${{ matrix.version_major }} - ${{ needs.init-data.outputs.date_stamp }} ${{ needs.init-data.outputs.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          push: '--force --set-upstream origin ${{ matrix.version_major }}'
+          cwd: ${{ matrix.version_major }}
