@@ -270,8 +270,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: docker.io
-          username: ${{ env.production && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
-          password: ${{ env.production && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
+          username: ${{ env.production == 'true' && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
+          password: ${{ env.production == 'true' && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
 
       -
         name: Login to Quay.io
@@ -279,8 +279,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: quay.io
-          username: ${{ env.production && secrets.QUAY_IO_USERNAME || secrets.TEST_QUAY_IO_USERNAME }}
-          password: ${{ env.production && secrets.QUAY_IO_CLI_PASSWORD || secrets.TEST_QUAY_IO_CLI_PASSWORD }}
+          username: ${{ env.production == 'true' && secrets.QUAY_IO_USERNAME || secrets.TEST_QUAY_IO_USERNAME }}
+          password: ${{ env.production == 'true' && secrets.QUAY_IO_CLI_PASSWORD || secrets.TEST_QUAY_IO_CLI_PASSWORD }}
 
       -
         name: Login to Ghcr.io
@@ -288,8 +288,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ env.production && secrets.GIT_HUB_USERNAME || secrets.TEST_GITHUB_USERNAME }}
-          password: ${{ env.production && secrets.GIT_HUB_TOKEN || secrets.TEST_GITHUB_TOKEN }}
+          username: ${{ env.production == 'true' && secrets.GIT_HUB_USERNAME || secrets.TEST_GITHUB_USERNAME }}
+          password: ${{ env.production == 'true' && secrets.GIT_HUB_TOKEN || secrets.TEST_GITHUB_TOKEN }}
 
       -
         name: Generate tags and prepare metadata to build and push
@@ -489,7 +489,7 @@ jobs:
       -
         name: "Commit and push ${{ matrix.image_types }}/*/* Dockerfile and RootFS (branch ${{ matrix.version_major }})"
         # 'default' or 'minimal' images only and 'Push to production' is checked
-        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.production && env.check_update != 0
+        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.production == 'true' && env.check_update != 0
         uses: EndBug/add-and-commit@v9
         with:
           default_author: user_info
