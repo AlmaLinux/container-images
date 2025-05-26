@@ -66,7 +66,7 @@ env:
   # List of versions to build on schedule
   # TODO: add 10 when it is released
   # Kitten should not be built on schedule
-  versions_list: '"8", "9"'
+  versions_list: '"8", "9", "10"'
 
   # List image types to build on schedule
   image_types: '"default", "minimal", "micro", "base", "init"'
