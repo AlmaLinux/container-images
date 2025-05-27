@@ -62,6 +62,8 @@ RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/
     cd /mnt/sys-root/etc/systemd/system ; \
     ln -s /usr/lib/systemd/system/multi-user.target default.target
 
+RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles.conf
+
 # Almalinux minimal build
 FROM scratch
 COPY --from=system-build /mnt/sys-root/ /

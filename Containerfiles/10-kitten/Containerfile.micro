@@ -30,6 +30,8 @@ RUN rm -rf /mnt/sys-root/var/cache/dnf /mnt/sys-root/var/log/dnf* /mnt/sys-root/
     cd /mnt/sys-root/etc ; \
     ln -s ../usr/share/zoneinfo/UTC localtime
 
+RUN install -m644 /usr/share/rootfiles/{.bash_logout,.bash_profile,.bashrc,.cshrc,.tcshrc} /mnt/sys-root/root/
+
 FROM scratch
 
 COPY --from=system-build /mnt/sys-root/ /
