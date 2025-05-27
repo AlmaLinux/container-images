@@ -75,6 +75,8 @@ RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/
     cd /mnt/sys-root/etc ; \
     ln -s ../usr/share/zoneinfo/UTC localtime ;
 
+RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles.conf
+
 # Almalinux default build
 FROM scratch AS stage2
 COPY --from=system-build /mnt/sys-root/ /
