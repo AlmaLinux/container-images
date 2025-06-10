@@ -1,4 +1,4 @@
-ARG SYSBASE=almalinux:9
+ARG SYSBASE=quay.io/almalinuxautobot/almalinux:9
 FROM ${SYSBASE} as system-build
 
 RUN mkdir /mnt/sys-root; \
@@ -76,6 +76,14 @@ RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/
     ln -s ../usr/share/zoneinfo/UTC localtime ;
 
 RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles.conf
+
+ARG TARGETPLATFORM
+RUN if [ "$TARGETPLATFORM" = "linux/386" ]; then \
+    sed -i -e 's/mirrorlist=/# mirrorlist=/g' \
+    -e 's/# baseurl=/baseurl=/g' \
+    -e 's/repo\.almalinux\.org\/almalinux/vault.almalinux.org/g' \
+    -e 's/\$basearch/i686/g' /mnt/sys-root/etc/yum.repos.d/*.repo; \
+fi
 
 # Almalinux default build
 FROM scratch as stage2
