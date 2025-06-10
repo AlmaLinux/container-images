@@ -192,6 +192,8 @@ jobs:
             platforms="${{ env.platforms }}"
             [[ "${{ matrix.version_major }}" =~ "10" ]] && \
               platforms="linux/amd64/v2, ${platforms}"
+            [[ "${{ matrix.version_major }}" =~ "9" ]] && \
+              platforms="linux/i386, ${platforms}"
             echo "platforms=${platforms}" >> $GITHUB_ENV
 
             # Registries
@@ -331,6 +333,7 @@ jobs:
           for platform in ${platforms//,/ }; do
             echo "Testing AlmaLinux ${{ matrix.version_major }} ${{ matrix.image_types }} for ${platform} image:"
 
+            # TODO: machine hardware name is x86_64 on linux/i386 platform
             docker run --platform=${platform} ${{ steps.build-images.outputs.digest }} /bin/bash -c " \
             uname -m \
             && cat /etc/almalinux-release \
@@ -422,6 +425,8 @@ jobs:
               platform=
               docker rmi rootfs
               case ${arch} in
+                i686)
+                  platform=i386;;
                 x86_64)
                   platform=amd64;;
                 x86_64_v2)
