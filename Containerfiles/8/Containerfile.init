@@ -1,4 +1,4 @@
-ARG SYSBASE=almalinux:8
+ARG SYSBASE=quay.io/almalinuxautobot/almalinux:8
 FROM ${SYSBASE} as system-build
 
 RUN mkdir -p /mnt/sys-root; \
@@ -50,6 +50,14 @@ RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/
     touch /mnt/sys-root/etc/machine-id; \
     touch /mnt/sys-root/etc/resolv.conf; \
     touch /mnt/sys-root/etc/hostname
+
+ARG TARGETPLATFORM
+RUN if [ "$TARGETPLATFORM" = "linux/386" ]; then \
+        sed -i -e 's/mirrorlist=/# mirrorlist=/g' \
+        -e 's/# baseurl=/baseurl=/g' \
+        -e 's/repo\.almalinux\.org\/almalinux/vault.almalinux.org/g' \
+        -e 's/\$basearch/i686/g' /mnt/sys-root/etc/yum.repos.d/*.repo; \
+fi
 
 FROM scratch  as stage2
 

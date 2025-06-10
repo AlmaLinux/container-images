@@ -190,10 +190,12 @@ jobs:
         run: |
             # Platforms
             platforms="${{ env.platforms }}"
-            [[ "${{ matrix.version_major }}" =~ "10" ]] && \
-              platforms="linux/amd64/v2, ${platforms}"
-            [[ "${{ matrix.version_major }}" =~ "9" ]] && \
-              platforms="linux/386, ${platforms}"
+            case ${{ matrix.version_major }} in
+              8|9)
+                platforms="linux/386, ${platforms}" ;;
+              10*)
+                platforms="linux/amd64/v2, ${platforms}" ;;
+            esac
             echo "platforms=${platforms}" >> $GITHUB_ENV
 
             # Registries
