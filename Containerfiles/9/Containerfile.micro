@@ -1,4 +1,4 @@
-ARG SYSBASE=quay.io/almalinuxautobot/almalinux:9
+ARG SYSBASE=quay.io/almalinuxorg/almalinux:9
 FROM ${SYSBASE} as system-build
 
 RUN mkdir -p /mnt/sys-root; \
