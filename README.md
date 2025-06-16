@@ -70,13 +70,20 @@ AlmaLinux container images types match [Red Hat Universal Base Image](https://ca
 
 | docker platform | hardware name |
 | --------------- | ------------- |
+| linux/386       | x86_64        |
 | linux/amd64     | x86_64        |
 | linux/amd64/v2  | x86_64 (v2)   |
 | linux/ppc64le   | ppc64le       |
 | linux/s390x     | s390x         |
 | linux/arm64     | aarch64       |
 
-`linux/amd64/v2` are for AlmaLinux Kitten and 10 releases only.
+`linux/amd64/v2` are for AlmaLinux Kitten and 10 releases.
+
+`linux/386` are for AlmaLinux 8 and 9 releases.
+
+To get packages arch, the `rpm -qf --queryformat '%{ARCH}' /etc/redhat-release` command may be used (except of `micro` image).
+
+❗ Please, note, `linux/amd64/v2` and `linux/386` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
 
 The [**containerd image store store**](https://docs.docker.com/storage/containerd/) for Docker Engine together with `buildx` are used to build and push multiple platforms at once.
 
@@ -163,6 +170,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 ├── docker-library-definition.tmpl
 │
 ├── default
+│   ├── 386
+│   │   ├── Dockerfile
+│   │   └── almalinux-8-default-386.tar.gz
 │   ├── amd64
 │   │   ├── Dockerfile
 │   │   └── almalinux-8-default-amd64.tar.gz
@@ -176,6 +186,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 │       ├── Dockerfile
 │       └── almalinux-8-default-s390x.tar.gz
 └── minimal
+    ├── 386
+    │   ├── Dockerfile
+    │   └── almalinux-8-minimal-386.tar.gz
     ├── amd64
     │   ├── Dockerfile
     │   └── almalinux-8-minimal-amd64.tar.gz
@@ -196,6 +209,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 ├── docker-library-definition.tmpl
 │
 ├── default
+│   ├── 386
+│   │   ├── Dockerfile
+│   │   └── almalinux-9-default-386.tar.gz
 │   ├── amd64
 │   │   ├── Dockerfile
 │   │   └── almalinux-9-default-amd64.tar.gz
@@ -209,6 +225,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 │       ├── Dockerfile
 │       └── almalinux-9-default-s390x.tar.gz
 └── minimal
+    ├── 386
+    │   ├── Dockerfile
+    │   └── almalinux-9-minimal-386.tar.gz
     ├── amd64
     │   ├── Dockerfile
     │   └── almalinux-9-minimal-amd64.tar.gz
@@ -382,6 +401,8 @@ ppc64le-Directory: {{ .image_type }}/ppc64le/
 s390x-Directory: {{ .image_type }}/s390x/
 Architectures: amd64, arm64v8, ppc64le, s390x
 ```
+
+❗ Please, note, `linux/amd64/v2` and `linux/386` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
 
 # How to contribute/help and customize workflow(s)
 
@@ -680,6 +701,8 @@ The command runs inside podman container pulling the most recent `quay.io/almali
 
  - Extends `platforms` list with `linux/amd64/v2` if Kitten or 10
 
+ - Extends `platforms` list with `linux/386` if AlmaLinux 8 or 9
+
  - Set `registries` into `registries_production` if production *Client Library*, and into `registries_testing` if scheduled workflow or testing *Client Library*.
 
 #### Step: Generate list of Docker images to use as base name for tags
@@ -775,7 +798,7 @@ The [docker/metadata-action@v5](https://github.com/docker/metadata-action) is us
 The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used to build images. This step builds the images from corresponding [`Containerfile`](https://github.com/AlmaLinux/container-images/tree/main/Containerfiles), for specified `env.platforms` and uses tags from the previous step. After the successful building, the images are loaded into docker, but not pushed yet as they need to be tested first. AlmaLinux 8 minimal images `buildx` looks like this:
 ```sh
 /usr/bin/docker buildx build --file ./Containerfile.minimal ... \
- --platform linux/amd64,linux/ppc64le,linux/s390x,linux/arm64 \
+ --platform linux/386,linux/amd64,linux/ppc64le,linux/s390x,linux/arm64 \
  --provenance false ... \
  --tag docker.io/***/8-minimal:latest --tag docker.io/***/8-minimal:8 --tag docker.io/***/8-minimal:8.9 --tag docker.io/***/8-minimal:8.9-20240319 --tag quay.io/***/8-minimal:latest --tag quay.io/***/8-minimal:8 --tag quay.io/***/8-minimal:8.9 --tag quay.io/***/8-minimal:8.9-20240319 \
  --load \
@@ -814,7 +837,7 @@ ___
 
 Platforms:
 ```
-linux/amd64, linux/ppc64le, linux/s390x, linux/arm64
+linux/386,linux/amd64, linux/ppc64le, linux/s390x, linux/arm64
 ```
 Tags:
 ```
