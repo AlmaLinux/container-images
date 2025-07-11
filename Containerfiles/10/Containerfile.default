@@ -17,6 +17,7 @@ RUN mkdir /mnt/sys-root; \
     hostname \
     iputils \
     glibc-minimal-langpack \
+    gzip \
     krb5-libs \
     less \
     libcurl-minimal \
