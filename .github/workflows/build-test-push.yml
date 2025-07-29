@@ -145,9 +145,6 @@ jobs:
       notify_mattermost: ${{ needs.init-data.outputs.notify_mattermost }}
       production: ${{ needs.init-data.outputs.production }}
 
-    outputs:
-      check_update: ${{ steps.check-update.outputs.check_update }}
-
     steps:
       -
         name: Prepare AlmaLinux Minor version number
@@ -185,7 +182,6 @@ jobs:
             check_update=255
 
           echo "check_update=${check_update}" >> "$GITHUB_ENV"
-          echo "check_update=${check_update}" >> "$GITHUB_OUTPUT"
           echo "Exit code: '$check_update'"
 
       -
@@ -361,6 +357,7 @@ jobs:
 
       -
         name: Prepare Mattermost message
+        if: env.check_update != 0
         run: |
           # Mattermost message heading
           cat << 'EOF'> ${{ matrix.version_major }}_mattermost.md
@@ -386,6 +383,7 @@ jobs:
 
       - name: Upload Mattermost message artifacts
         uses: actions/upload-artifact@v4
+        if: env.check_update != 0
         with:
           name: mattermost-message-${{ matrix.version_major }}-${{ matrix.image_types }}
           path: ${{ matrix.version_major }}*_mattermost.md
@@ -524,7 +522,7 @@ jobs:
     name: Mattermost notification
     runs-on: ubuntu-24.04
     needs: [init-data, build-test-push]
-    if: needs.build-test-push.result == 'success' && needs.init-data.outputs.notify_mattermost == 'true' && needs.build-test-push.outputs.check_update != '0'
+    if: needs.init-data.outputs.notify_mattermost == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -537,10 +535,18 @@ jobs:
       - name: Create Mattermost message
         run: |
           # Artifacts are downloaded into mattermost-message-${{ matrix.version_major }}-* directory
-          # Find any ${{ matrix.version_major }}_mattermost.md over all image types
-          # and copy it to the current directory
-          mattermost_md=$(ls -1 mattermost-message-${{ matrix.version_major }}-*/${{ matrix.version_major }}_mattermost.md | head -1)
-          cp -av "${mattermost_md}" .
+          # Find any ${{ matrix.version_major }}_mattermost.md over all image types and copy it to the current directory
+          # If no such file found, set notify_mattermost to false and exit (no notification will be sent)
+          # If found, set MATTERMOST_TEXT environment variable with complete message
+          notify_mattermost=true
+          mattermost_md=$(ls -1 mattermost-message-${{ matrix.version_major }}-*/${{ matrix.version_major }}_mattermost.md 2>/dev/null | head -1)
+          if [ -f "${mattermost_md}" ]; then
+            cp -av "${mattermost_md}" .
+          else
+            notify_mattermost=false
+          fi
+          echo "notify_mattermost=${notify_mattermost}" >> $GITHUB_ENV
+          [ "${notify_mattermost}" = "false" ] && exit 0
 
           # MATTERMOST_TEXT environment variable with complete message
           {
@@ -551,6 +557,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Send notification to Mattermost
+        if: env.notify_mattermost == 'true'
         uses: mattermost/action-mattermost-notify@master
         with:
           MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
