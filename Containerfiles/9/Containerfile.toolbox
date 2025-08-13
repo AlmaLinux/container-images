@@ -161,6 +161,15 @@ RUN systemctl set-default multi-user.target; \
     console-getty.service
 
 FROM scratch
+
+LABEL com.github.containers.toolbox="true" \
+      com.redhat.component="almalinux-toolbox" \
+      name="almalinux-toolbox" \
+      version="9" \
+      usage="This image is meant to be used with the toolbox command" \
+      summary="Base image for creating AlmaLinux toolbox containers" \
+      maintainer="Isaac Beverly <imbev@protonmail.com>"
+
 COPY --from=stage2 / /
 
 ENV LANG=C.utf8
