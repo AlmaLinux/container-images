@@ -58,7 +58,7 @@ on:
           type: boolean
           default: true
 
-        type_init:
+        type_tool:
           description: 'toolbox'
           required: true
           type: boolean
