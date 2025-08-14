@@ -77,7 +77,6 @@ RUN rm /etc/rpm/macros.image-language-conf; \
     dnf install -y \
     --installroot /mnt/sys-root --releasever 10 --setopt install_weak_deps=false --nodocs \
     epel-release \
-    ; \
     'dnf-command(config-manager)' \
     ; \
     dnf config-manager --installroot /mnt/sys-root --enable \
