@@ -58,6 +58,12 @@ on:
           type: boolean
           default: true
 
+        type_toolbox:
+          description: 'toolbox'
+          required: true
+          type: boolean
+          default: true
+
   schedule:
     # run every day at 04:00 UTC
     - cron:  '00 04 * * *'
@@ -69,7 +75,7 @@ env:
   versions_list: '"8", "9", "10"'
 
   # List image types to build on schedule
-  image_types: '"default", "minimal", "micro", "base", "init"'
+  image_types: '"default", "minimal", "micro", "base", "init", "toolbox"'
 
   # Latest version
   version_latest: 9
@@ -103,7 +109,7 @@ jobs:
           case ${{ github.event_name }} in
             workflow_dispatch)
               # Set image types matrix based on boolean inputs.type_* with true value
-              echo "image_types_matrix=$(jq -c <<< '[${{ format('"{0}", "{1}", "{2}", "{3}", "{4}"', ( inputs.type_default && 'default' ), ( inputs.type_minimal && 'minimal' ), ( inputs.type_micro && 'micro' ), ( inputs.type_base && 'base' ), ( inputs.type_init && 'init' ) ) }}]')" >> $GITHUB_OUTPUT
+              echo "image_types_matrix=$(jq -c <<< '[${{ format('"{0}", "{1}", "{2}", "{3}", "{4}", "{5}"', ( inputs.type_default && 'default' ), ( inputs.type_minimal && 'minimal' ), ( inputs.type_micro && 'micro' ), ( inputs.type_base && 'base' ), ( inputs.type_init && 'init' ), ( inputs.type_toolbox && 'toolbox' ) ) }}]')" >> $GITHUB_OUTPUT
               echo "version_major_matrix=$(jq -c <<< '["${{ inputs.version_major }}"]')" >> $GITHUB_OUTPUT
               echo "production=${{ inputs.production }}" >> $GITHUB_OUTPUT
               echo "notify_mattermost=${{ inputs.notify_mattermost }}" >> $GITHUB_OUTPUT

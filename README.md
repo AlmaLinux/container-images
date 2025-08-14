@@ -64,6 +64,9 @@ AlmaLinux container images types match [Red Hat Universal Base Image](https://ca
 - `micro`
 - `minimal` (the image is also available via the Docker *Official Library*)
 
+Additionally, there is another container image type:
+- `toolbox`
+
 ### Supported platforms/architectures
 
 **Build, Test and Push** workflow builds container images of the following platforms simultaneously with `docker buildx`. They result in the following machine hardware names (`uname -m`):
@@ -108,6 +111,10 @@ The following *repositories* are created on all registries ([Docker.io/almalinux
 - `/9-minimal`
 - `/10-minimal`
 - `/10-kitten-minimal`
+- `/8-toolbox`
+- `/9-toolbox`
+- `/10-toolbox`
+- `/10-kitten-toolbox`
 
 They are the *Client Library*.
 
@@ -141,25 +148,29 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 │   │   ├── Containerfile.default
 │   │   ├── Containerfile.init
 │   │   ├── Containerfile.micro
-│   │   └── Containerfile.minimal
+│   │   ├── Containerfile.minimal
+│   │   └── Containerfile.toolbox
 │   ├── 10-kitten
 │   │   ├── Containerfile.base
 │   │   ├── Containerfile.default
 │   │   ├── Containerfile.init
 │   │   ├── Containerfile.micro
-│   │   └── Containerfile.minimal
+│   │   ├── Containerfile.minimal
+│   │   └── Containerfile.toolbox
 │   ├── 8
 │   │   ├── Containerfile.base
 │   │   ├── Containerfile.default
 │   │   ├── Containerfile.init
 │   │   ├── Containerfile.micro
-│   │   └── Containerfile.minimal
+│   │   ├── Containerfile.minimal
+│   │   └── Containerfile.toolbox
 │   └── 9
 │       ├── Containerfile.base
 │       ├── Containerfile.default
 │       ├── Containerfile.init
 │       ├── Containerfile.micro
-│       └── Containerfile.minimal
+│       ├── Containerfile.minimal
+│       └── Containerfile.toolbox
 ├── LICENSE
 └── README.md
 ```
@@ -508,7 +519,7 @@ env:
 
 Where `<type_name>` is the name of your image type.
 
-Default are: *base*, *default*, *init*, *micro*, *minimal*
+Default are: *base*, *default*, *init*, *micro*, *minimal*, *toolbox*
 
 ## To bump AlmaLinux release (*Major* number)
 
@@ -639,7 +650,7 @@ The workflow inputs are:
 
 - `notify_mattermost` - boolean '*Send notification to Mattermost*' with the default value `false` (not checked). Determines whether to send notification to channel `vars.MATTERMOST_CHANNEL` using `secrets.MATTERMOST_WEBHOOK_URL`
 
-- Checklist of image types: *base*, *default*, *init*, *micro*, *minimal*. At least one should be checked.
+- Checklist of image types: *base*, *default*, *init*, *micro*, *minimal*, *toolbox*. At least one should be checked.
 
 - `version_major` - dropdown 'AlmaLinux major version' with the default value `9`. This is a major number of AlmaLinux version to build images for.
 
