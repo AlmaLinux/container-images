@@ -3,18 +3,18 @@ name: Release Container Images (scriptless)
 on:
   push:
     tags:
-      - "v*.*"
+      - "v*.*"         # 例: v9.0.20250919.0 / v10.0.20250919.0
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write      # Release 作成に必要
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
   cancel-in-progress: false
 
 jobs:
-  release:
+  per-flavor:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -38,8 +38,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF##*/}"
-          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"
+          TAG="${GITHUB_REF##*/}"                          # v9.0.x / v10.0.x
+          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"  # 9 / 10
           PREV="$((REL-1))"
           echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
           echo "rel=$REL"   >> "$GITHUB_OUTPUT"
@@ -85,27 +85,40 @@ jobs:
           NEW="sbom/$rel/$flavor.json"
           OLD="sbom/$prev/$flavor.json"
           if [[ ! -f "$NEW" ]]; then
-            echo "NEW SBOM missing: $NEW" >&2; exit 1
+            echo "NEW SBOM missing: $NEW" >&2
+            exit 1
           fi
           if [[ '${{ steps.oldsbom.outputs.has_old }}' != 'true' || ! -f "$OLD" ]]; then
             {
               echo "# Initial Release: AlmaLinux $rel ($flavor)"
-              echo; echo "- SBOM: \`$NEW\`"
+              echo
+              echo "- SBOM: \`$NEW\`"
               echo "- Packages: \`$(jq -r '.artifacts | length' "$NEW" 2>/dev/null || echo "n/a")\`"
-              echo; echo "No previous version to diff against."
+              echo
+              echo "No previous version to diff against."
             } > "RELEASE_CHANGELOG-${flavor}.md"
             exit 0
           fi
+
+          # 差分（更新・追加・削除）
           jq -r '.artifacts[]?|"\(.name) \(.version)"' "$OLD" | sort > /tmp/old.txt
           jq -r '.artifacts[]?|"\(.name) \(.version)"' "$NEW" | sort > /tmp/new.txt
+
+          # 名前集合
           cut -d' ' -f1 /tmp/old.txt | sort -u > /tmp/old.names
           cut -d' ' -f1 /tmp/new.txt | sort -u > /tmp/new.names
+
           ADDED_NAMES=$(comm -13 /tmp/old.names /tmp/new.names || true)
           REMOVED_NAMES=$(comm -23 /tmp/old.names /tmp/new.names || true)
+
+          # 同名のバージョン変更
           UPDATED=$(
-            join -j1 -o 1.1,1.2,2.2 <(sort /tmp/old.txt) <(sort /tmp/new.txt) |
-            awk '$2 != $3 {print $1" " $2 " -> " $3}' || true
+            join -j1 -o 1.1,1.2,2.2 \
+              <(sort /tmp/old.txt) \
+              <(sort /tmp/new.txt) \
+            | awk '$2 != $3 {print $1" " $2 " -> " $3}' || true
           )
+
           {
             echo "# Changelog: AlmaLinux $prev → $rel ($flavor)"
             echo
@@ -113,16 +126,63 @@ jobs:
             echo "SBOM(new): \`$NEW\`"
             echo
             echo "## Updated Packages"
-            echo '```'; [[ -n "$UPDATED" ]] && echo "$UPDATED" || echo "(none)"; echo '```'
+            echo '```'
+            [[ -n "$UPDATED" ]] && echo "$UPDATED" || echo "(none)"
+            echo '```'
             echo
             echo "## Added Packages"
-            echo '```'; [[ -n "$ADDED_NAMES" ]] && echo "$ADDED_NAMES" || echo "(none)"; echo '```'
+            echo '```'
+            [[ -n "$ADDED_NAMES" ]] && echo "$ADDED_NAMES" || echo "(none)"
+            echo '```'
             echo
             echo "## Removed Packages"
-            echo '```'; [[ -n "$REMOVED_NAMES" ]] && echo "$REMOVED_NAMES" || echo "(none)"; echo '```'
+            echo '```'
+            [[ -n "$REMOVED_NAMES" ]] && echo "$REMOVED_NAMES" || echo "(none)"
+            echo '```'
           } > "RELEASE_CHANGELOG-${flavor}.md"
 
-      - name: Merge changelogs for release body
+      - name: Upload changelog artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog-${{ matrix.flavor }}
+          path: RELEASE_CHANGELOG-${{ matrix.flavor }}.md
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ steps.ver.outputs.rel }}-${{ matrix.flavor }}
+          path: sbom/${{ steps.ver.outputs.rel }}/${{ matrix.flavor }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: per-flavor
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract release numbers (again)
+        id: ver
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF##*/}"
+          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "rel=$REL" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*'
+          merge-multiple: true
+
+      - name: Build release body (all flavors)
         id: body
         shell: bash
         run: |
@@ -145,7 +205,7 @@ jobs:
             echo "$delim"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create Release
+      - name: Create Release (single shot)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
