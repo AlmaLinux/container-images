@@ -137,10 +137,12 @@ jobs:
               echo >> body.txt
             fi
           done
+
+          delim="EOF_$(date +%s)_$RANDOM"
           {
-            echo "body<<'EOF'"
+            echo "body<<$delim"
             cat body.txt
-            echo "EOF"
+            echo "$delim"
           } >> "$GITHUB_OUTPUT"
 
       - name: Create Release
