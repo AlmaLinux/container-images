@@ -1,4 +1,4 @@
-name: Release Container Images (SBOM package diff)
+name: Release Container Images (SBOM diff)
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write      # Release 作成に必要
+  contents: write
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
@@ -25,13 +25,22 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install syft & jq
+      - name: Install syft, cyclonedx-cli & jq
         run: |
           set -euxo pipefail
+          # syft
           curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
           syft --version
+          # jq
           sudo apt-get update
           sudo apt-get install -y jq
+          # cyclonedx-cli (pin a known working version)
+          CLI_VER="v0.27.0"
+          curl -sSL -o /tmp/cdx \
+            "https://github.com/CycloneDX/cyclonedx-cli/releases/download/${CLI_VER}/cyclonedx-linux-x64"
+          chmod +x /tmp/cdx
+          sudo mv /tmp/cdx /usr/local/bin/cyclonedx
+          cyclonedx version || true
 
       - name: Extract release numbers
         id: ver
@@ -72,7 +81,7 @@ jobs:
           echo "has_old=true" >> "$GITHUB_OUTPUT"
           echo "old_ref=$OLD" >> "$GITHUB_OUTPUT"
 
-      - name: Generate SBOMs (NEW & OLD if exists)
+      - name: Generate SBOMs (CycloneDX JSON)
         id: sbom
         shell: bash
         run: |
@@ -84,22 +93,22 @@ jobs:
 
           mkdir -p "sbom/$rel" "sbom/$prev"
 
-          # NEW SBOM
-          NEW_JSON="sbom/$rel/$flavor.json"
+          # NEW: CycloneDX JSON
+          NEW_JSON="sbom/$rel/$flavor.cdx.json"
           for i in 1 2 3; do
-            syft "docker:$NEW" -o json > "$NEW_JSON" && break
+            syft "docker:$NEW" -o cyclonedx-json > "$NEW_JSON" && break
             echo "syft NEW failed (try $i), retry..." >&2
             sleep 5
             [[ $i -eq 3 ]] && { echo "syft NEW failed 3 times"; exit 1; }
           done
           echo "new_json=$NEW_JSON" >> "$GITHUB_OUTPUT"
 
-          # OLD SBOM (if we could build OLD)
+          # OLD (if exists)
           if [[ '${{ steps.oldimg.outputs.has_old }}' == 'true' ]]; then
             OLD='${{ steps.oldimg.outputs.old_ref }}'
-            OLD_JSON="sbom/$prev/$flavor.json"
+            OLD_JSON="sbom/$prev/$flavor.cdx.json"
             for i in 1 2 3; do
-              syft "docker:$OLD" -o json > "$OLD_JSON" && break
+              syft "docker:$OLD" -o cyclonedx-json > "$OLD_JSON" && break
               echo "syft OLD failed (try $i), retry..." >&2
               sleep 5
               if [[ $i -eq 3 ]]; then
@@ -118,7 +127,7 @@ jobs:
             echo "has_old_sbom=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate per-flavor changelog (package diff from SBOM)
+      - name: Generate per-flavor SBOM diff (CycloneDX CLI)
         shell: bash
         run: |
           set -euo pipefail
@@ -133,55 +142,31 @@ jobs:
             exit 1
           fi
 
+          OUT="RELEASE_CHANGELOG-${flavor}.md"
+
           if [[ '${{ steps.sbom.outputs.has_old_sbom }}' != 'true' || ! -f "$OLD_JSON" ]]; then
             {
-              echo "# Initial Release: AlmaLinux $rel ($flavor)"
+              echo "# Initial Release SBOM: AlmaLinux $rel ($flavor)"
               echo
-              echo "- SBOM: \`$NEW_JSON\`"
-              echo "- Packages: \`$(jq -r '.artifacts | length' "$NEW_JSON" 2>/dev/null || echo "n/a")\`"
+              echo "- SBOM(new): \`$NEW_JSON\`"
               echo
-              echo "No previous version to diff against."
-            } > "RELEASE_CHANGELOG-${flavor}.md"
+              echo "_No previous SBOM to diff against._"
+            } > "$OUT"
             exit 0
           fi
 
-          # パッケージ一覧（name version）
-          jq -r '.artifacts[]?|"\(.name) \(.version)"' "$OLD_JSON" | sort > /tmp/pkgs-old.txt
-          jq -r '.artifacts[]?|"\(.name) \(.version)"' "$NEW_JSON" | sort > /tmp/pkgs-new.txt
-
-          # 名前集合
-          cut -d' ' -f1 /tmp/pkgs-old.txt | sort -u > /tmp/old.names
-          cut -d' ' -f1 /tmp/pkgs-new.txt | sort -u > /tmp/new.names
-
-          ADDED_NAMES=$(comm -13 /tmp/old.names /tmp/new.names || true)
-          REMOVED_NAMES=$(comm -23 /tmp/old.names /tmp/new.names || true)
-
-          # 同名のバージョン変更
-          UPDATED=$(
-            join -j1 -o 1.1,1.2,2.2 \
-              <(sort /tmp/pkgs-old.txt) \
-              <(sort /tmp/pkgs-new.txt) \
-            | awk '$2 != $3 {print $1" " $2 " -> " $3}' || true
-          )
-
           {
-            echo "# Changelog: AlmaLinux $prev → $rel ($flavor)"
+            echo "# SBOM Diff (CycloneDX): AlmaLinux $prev → $rel ($flavor)"
             echo
-            echo "## Updated Packages"
-            echo '```'
-            [[ -n "$UPDATED" ]] && echo "$UPDATED" || echo "(none)"
-            echo '```'
+            echo "- SBOM(old): \`$OLD_JSON\`"
+            echo "- SBOM(new): \`$NEW_JSON\`"
             echo
-            echo "## Added Packages"
+            echo "## Components diff"
+            # plain text出力をそのままMarkdownに埋め込む
             echo '```'
-            [[ -n "$ADDED_NAMES" ]] && echo "$ADDED_NAMES" || echo "(none)"
+            cyclonedx diff --input-format json "$OLD_JSON" "$NEW_JSON" || true
             echo '```'
-            echo
-            echo "## Removed Packages"
-            echo '```'
-            [[ -n "$REMOVED_NAMES" ]] && echo "$REMOVED_NAMES" || echo "(none)"
-            echo '```'
-          } > "RELEASE_CHANGELOG-${flavor}.md"
+          } > "$OUT"
 
       - name: Upload changelog artifact
         uses: actions/upload-artifact@v4
@@ -196,8 +181,8 @@ jobs:
         with:
           name: sbom-${{ steps.ver.outputs.rel }}-${{ matrix.flavor }}
           path: |
-            sbom/${{ steps.ver.outputs.rel }}/${{ matrix.flavor }}.json
-            sbom/${{ steps.ver.outputs.prev }}/${{ matrix.flavor }}.json
+            sbom/${{ steps.ver.outputs.rel }}/${{ matrix.flavor }}.cdx.json
+            sbom/${{ steps.ver.outputs.prev }}/${{ matrix.flavor }}.cdx.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -256,5 +241,5 @@ jobs:
           body: ${{ steps.body.outputs.body }}
           files: |
             RELEASE_CHANGELOG-*.md
-            sbom/${{ steps.ver.outputs.rel }}/*.json
+            sbom/${{ steps.ver.outputs.rel }}/*.cdx.json
 
