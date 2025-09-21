@@ -1,13 +1,13 @@
-name: Release Container Images (scriptless)
+name: Release Container Images (image-diff only)
 
 on:
   push:
     tags:
-      - "v*.*"         # 例: v9.0.20250919.0 / v10.0.20250919.0
+      - "v*.*"           # 例: v9.0.20250919.0 / v10.0.20250919.0
   workflow_dispatch:
 
 permissions:
-  contents: write      # Release 作成に必要
+  contents: write
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}-${{ github.run_id }}
@@ -16,6 +16,7 @@ concurrency:
 jobs:
   per-flavor:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     strategy:
       matrix:
         flavor: [default, base, init, micro, minimal, toolbox]
@@ -25,120 +26,134 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install syft & jq
+      - name: Install container-diff & jq
         run: |
           set -euxo pipefail
-          curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
-          syft --version
           sudo apt-get update
           sudo apt-get install -y jq
+          curl -sSL -o container-diff https://storage.googleapis.com/container-diff/latest/container-diff-linux-amd64
+          chmod +x container-diff
+          sudo mv container-diff /usr/local/bin/
+          container-diff version || true
 
-      - name: Extract release numbers
+      - name: Extract tag/rel
         id: ver
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF##*/}"                          # v9.0.x / v10.0.x
-          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"  # 9 / 10
-          PREV="$((REL-1))"
-          echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
-          echo "rel=$REL"   >> "$GITHUB_OUTPUT"
-          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+          TAG="${GITHUB_REF##*/}"                          # v9.0.x
+          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"  # 9
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "rel=$REL" >> "$GITHUB_OUTPUT"
 
-      - name: Build NEW image & SBOM
+      - name: Find previous tag (same major)
+        id: prev
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ steps.ver.outputs.tag }}'
+          rel='${{ steps.ver.outputs.rel }}'
+          PREV_TAG="$(git tag --list "v${rel}.*" --sort=-version:refname | grep -v "^${tag}$" | head -n1 || true)"
+          echo "prev_tag=${PREV_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build NEW image
         shell: bash
         run: |
           set -euxo pipefail
           rel='${{ steps.ver.outputs.rel }}'
           flavor='${{ matrix.flavor }}'
           file="Containerfiles/$rel/Containerfile.$flavor"
-          tag="almalinux${rel}-${flavor}:${{ steps.ver.outputs.tag }}"
-          docker build -f "$file" -t "$tag" .
-          mkdir -p "sbom/$rel"
-          syft "docker:$tag" -o json > "sbom/$rel/$flavor.json"
+          NEW="almalinux${rel}-${flavor}:${{ steps.ver.outputs.tag }}"
+          docker build -f "$file" -t "$NEW" .
 
-      - name: Build OLD image & SBOM (optional; initial-safe)
-        id: oldsbom
-        shell: bash
-        run: |
-          set -euo pipefail
-          prev='${{ steps.ver.outputs.prev }}'
-          flavor='${{ matrix.flavor }}'
-          oldfile="Containerfiles/$prev/Containerfile.$flavor"
-          if [[ ! -f "$oldfile" ]]; then
-            echo "has_old=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          oldtag="almalinux${prev}-${flavor}:__old__"
-          docker build -f "$oldfile" -t "$oldtag" .
-          mkdir -p "sbom/$prev"
-          syft "docker:$oldtag" -o json > "sbom/$prev/$flavor.json"
-          echo "has_old=true" >> "$GITHUB_OUTPUT"
-
-      - name: Generate per-flavor changelog
+      - name: Build OLD image (if previous tag exists)
+        id: oldimg
         shell: bash
         run: |
           set -euo pipefail
           rel='${{ steps.ver.outputs.rel }}'
-          prev='${{ steps.ver.outputs.prev }}'
           flavor='${{ matrix.flavor }}'
-          NEW="sbom/$rel/$flavor.json"
-          OLD="sbom/$prev/$flavor.json"
-          if [[ ! -f "$NEW" ]]; then
-            echo "NEW SBOM missing: $NEW" >&2
-            exit 1
+          prev='${{ steps.prev.outputs.prev_tag }}'
+          if [[ -z "$prev" ]]; then
+            echo "has_old=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
-          if [[ '${{ steps.oldsbom.outputs.has_old }}' != 'true' || ! -f "$OLD" ]]; then
+          tmp="/tmp/old.Containerfile.$flavor"
+          if git show "$prev:Containerfiles/$rel/Containerfile.$flavor" > "$tmp" 2>/dev/null; then
+            OLD="almalinux${rel}-${flavor}:__old__"
+            docker build -f "$tmp" -t "$OLD" .
+            echo "has_old=true" >> "$GITHUB_OUTPUT"
+            echo "old_ref=$OLD" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_old=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate per-flavor changelog (image diff only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          flavor='${{ matrix.flavor }}'
+          NEW="almalinux${{ steps.ver.outputs.rel }}-${flavor}:${{ steps.ver.outputs.tag }}"
+
+          if [[ '${{ steps.oldimg.outputs.has_old }}' != 'true' ]]; then
             {
-              echo "# Initial Release: AlmaLinux $rel ($flavor)"
+              echo "# Initial Release (image diff): ${{ steps.ver.outputs.tag }} ($flavor)"
               echo
-              echo "- SBOM: \`$NEW\`"
-              echo "- Packages: \`$(jq -r '.artifacts | length' "$NEW" 2>/dev/null || echo "n/a")\`"
+              echo "No previous tag in the same major. Image diff is not applicable."
               echo
-              echo "No previous version to diff against."
+              echo "## Image Metadata (NEW)"
+              docker image inspect "$NEW" | jq -r '.[0] |
+                "RepoTags: \(.RepoTags // [])\nRepoDigests: \(.RepoDigests // [])\nSize: \(.Size) bytes\nConfig: Entrypoint=\(.Config.Entrypoint // []), Cmd=\(.Config.Cmd // []), Env=\((.Config.Env // [])|length) vars, Labels=\((.Config.Labels // {})|keys|length)"'
             } > "RELEASE_CHANGELOG-${flavor}.md"
             exit 0
           fi
 
-          # 差分（更新・追加・削除）
-          jq -r '.artifacts[]?|"\(.name) \(.version)"' "$OLD" | sort > /tmp/old.txt
-          jq -r '.artifacts[]?|"\(.name) \(.version)"' "$NEW" | sort > /tmp/new.txt
+          OLD='${{ steps.oldimg.outputs.old_ref }}'
 
-          # 名前集合
-          cut -d' ' -f1 /tmp/old.txt | sort -u > /tmp/old.names
-          cut -d' ' -f1 /tmp/new.txt | sort -u > /tmp/new.names
+          # --- Metadata snapshot
+          NEW_META=$(docker image inspect "$NEW")
+          OLD_META=$(docker image inspect "$OLD")
+          NEW_DIGEST=$(echo "$NEW_META" | jq -r '.[0].RepoDigests[0] // ""')
+          OLD_DIGEST=$(echo "$OLD_META" | jq -r '.[0].RepoDigests[0] // ""')
+          NEW_SIZE=$(echo "$NEW_META" | jq -r '.[0].Size // 0')
+          OLD_SIZE=$(echo "$OLD_META" | jq -r '.[0].Size // 0')
+          SIZE_DELTA=$((NEW_SIZE-OLD_SIZE))
 
-          ADDED_NAMES=$(comm -13 /tmp/old.names /tmp/new.names || true)
-          REMOVED_NAMES=$(comm -23 /tmp/old.names /tmp/new.names || true)
+          # --- container-diff: file/metadata/history
+          container-diff diff daemon://"$OLD" daemon://"$NEW" \
+            --type=file --type=metadata --type=history --json > /tmp/diff.json
 
-          # 同名のバージョン変更
-          UPDATED=$(
-            join -j1 -o 1.1,1.2,2.2 \
-              <(sort /tmp/old.txt) \
-              <(sort /tmp/new.txt) \
-            | awk '$2 != $3 {print $1" " $2 " -> " $3}' || true
-          )
+          # --- File change counts & lists
+          jq -r '.[] | select(.AnalyserName=="File") | .Diff.Added[]?.Name'   /tmp/diff.json | sort > /tmp/added.txt || true
+          jq -r '.[] | select(.AnalyserName=="File") | .Diff.Deleted[]?.Name' /tmp/diff.json | sort > /tmp/removed.txt || true
+          jq -r '.[] | select(.AnalyserName=="File") | .Diff.Changed[]?.Name' /tmp/diff.json | sort > /tmp/changed.txt || true
+          ADDED=$(wc -l < /tmp/added.txt | xargs)
+          REMOVED=$(wc -l < /tmp/removed.txt | xargs)
+          MODIFIED=$(wc -l < /tmp/changed.txt | xargs)
+          TOP() { head -n "${1:-100}" || true; }
 
           {
-            echo "# Changelog: AlmaLinux $prev → $rel ($flavor)"
+            echo "# Changelog (image diff): previous → ${{ steps.ver.outputs.tag }} ($flavor)"
             echo
-            echo "SBOM(old): \`$OLD\`"
-            echo "SBOM(new): \`$NEW\`"
+            echo "## Image Metadata"
+            echo "- OLD digest: \`$OLD_DIGEST\`"
+            echo "- NEW digest: \`$NEW_DIGEST\`"
+            echo "- Size: OLD \`$OLD_SIZE\` → NEW \`$NEW_SIZE\` (**Δ $SIZE_DELTA bytes**)"
             echo
-            echo "## Updated Packages"
-            echo '```'
-            [[ -n "$UPDATED" ]] && echo "$UPDATED" || echo "(none)"
-            echo '```'
+            echo "## File Changes (from container-diff)"
+            echo "- Added: \`$ADDED\`  Removed: \`$REMOVED\`  Modified: \`$MODIFIED\`"
             echo
-            echo "## Added Packages"
-            echo '```'
-            [[ -n "$ADDED_NAMES" ]] && echo "$ADDED_NAMES" || echo "(none)"
-            echo '```'
+            echo "### Added (top 100)";    echo '```'; TOP 100 < /tmp/added.txt;    echo '```'
+            echo "### Removed (top 100)";  echo '```'; TOP 100 < /tmp/removed.txt;  echo '```'
+            echo "### Modified (top 100)"; echo '```'; TOP 100 < /tmp/changed.txt;  echo '```'
             echo
-            echo "## Removed Packages"
-            echo '```'
-            [[ -n "$REMOVED_NAMES" ]] && echo "$REMOVED_NAMES" || echo "(none)"
-            echo '```'
+            echo "## History / Layers (from container-diff)"
+            jq -r '.[] | select(.AnalyserName=="History") | .Diff | to_entries[]
+              | "- \(.key): \(.value|tostring)"' /tmp/diff.json || true
+            echo
+            echo "## Config Diff (from container-diff metadata)"
+            jq -r '.[] | select(.AnalyserName=="Metadata") | .Diff | to_entries[]
+              | "- \(.key): \(.value|tostring)"' /tmp/diff.json || true
           } > "RELEASE_CHANGELOG-${flavor}.md"
 
       - name: Upload changelog artifact
@@ -146,14 +161,6 @@ jobs:
         with:
           name: changelog-${{ matrix.flavor }}
           path: RELEASE_CHANGELOG-${{ matrix.flavor }}.md
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom-${{ steps.ver.outputs.rel }}-${{ matrix.flavor }}
-          path: sbom/${{ steps.ver.outputs.rel }}/${{ matrix.flavor }}.json
           if-no-files-found: error
           retention-days: 7
 
@@ -166,7 +173,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract release numbers (again)
+      - name: Extract tag/rel
         id: ver
         shell: bash
         run: |
@@ -197,13 +204,8 @@ jobs:
               echo >> body.txt
             fi
           done
-
           delim="EOF_$(date +%s)_$RANDOM"
-          {
-            echo "body<<$delim"
-            cat body.txt
-            echo "$delim"
-          } >> "$GITHUB_OUTPUT"
+          { echo "body<<$delim"; cat body.txt; echo "$delim"; } >> "$GITHUB_OUTPUT"
 
       - name: Create Release (single shot)
         uses: softprops/action-gh-release@v2
@@ -211,7 +213,5 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: "Version ${{ steps.ver.outputs.tag }}"
           body: ${{ steps.body.outputs.body }}
-          files: |
-            RELEASE_CHANGELOG-*.md
-            sbom/${{ steps.ver.outputs.rel }}/*.json
+          files: RELEASE_CHANGELOG-*.md
 
