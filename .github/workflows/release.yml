@@ -170,12 +170,13 @@ jobs:
             } > "$OUT"
 
             # 件数は jq で SBOM JSON を直接比較（purl を優先、無ければ name+group）
-            jq -n --argfile old "$OLD_JSON" --argfile nw "$NEW_JSON" '
+              jq -n --slurpfile old "$OLD_JSON" --slurpfile nw "$NEW_JSON" '
+              # old/nw は配列で入るので [0] を使う
               def key($c): ($c.purl // (($c.group // "") + ":" + ($c.name // "")));
               def items($doc): ($doc.components // []) | map({k: key(.), v: (.version // "")});
               def toset($xs): reduce $xs[] as $x ({}; .[$x.k]=$x.v);
 
-              ($old|items) as $O | ($nw|items) as $N
+              ($old[0]|items) as $O | ($nw[0]|items) as $N
               | ($O|toset) as $OS | ($N|toset) as $NS
               | {
                   flavor: $ENV.flavor,
@@ -264,10 +265,11 @@ jobs:
               modified=$(jq -r '.modified' "$sum")
               note=$(jq -r '.note' "$sum")
               echo "| ${f} | ${prev_rel}→${rel} | ${added} | ${removed} | ${modified} | ${note} |" >> body.txt
-            else
+              else
               # まとめファイル無ければ初回/未生成扱い
-              echo "| ${f} | ${prev_rel}→${rel} | - | - | - | no summary |" >> body.txt
-            enddone
+                echo "| ${f} | ${prev_rel}→${rel} | - | - | - | no summary |" >> body.txt
+            fi
+          done
           done
 
           delim="EOF_$(date +%s)_$RANDOM"
