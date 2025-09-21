@@ -3,7 +3,7 @@ name: Release Container Images (SBOM diff)
 on:
   push:
     tags:
-      - "v*.*"            # 例: v9.0.20250919.0 / v10.0.20250919.0
+      - "v*.*"         # 例: v9.0.20250919.0 / v10.0.20250919.0
   workflow_dispatch:
 
 permissions:
@@ -26,7 +26,6 @@ jobs:
           fetch-depth: 0
 
       - name: Install syft, cyclonedx-cli & jq
-        shell: bash
         run: |
           set -euxo pipefail
           # syft
@@ -48,8 +47,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF##*/}"                              # v9.0.x / v10.0.x
-          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')" # 9 / 10
+          TAG="${GITHUB_REF##*/}"                          # v9.0.x / v10.0.x
+          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"  # 9 / 10
           PREV="$((REL-1))"
           echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
           echo "rel=$REL"   >> "$GITHUB_OUTPUT"
@@ -79,8 +78,8 @@ jobs:
           fi
           OLD="almalinux${prev}-${flavor}:__old__"
           docker build -f "$oldfile" -t "$OLD" .
-          echo "has_old=true"   >> "$GITHUB_OUTPUT"
-          echo "old_ref=$OLD"   >> "$GITHUB_OUTPUT"
+          echo "has_old=true" >> "$GITHUB_OUTPUT"
+          echo "old_ref=$OLD" >> "$GITHUB_OUTPUT"
 
       - name: Generate SBOMs (CycloneDX JSON)
         id: sbom
@@ -119,13 +118,13 @@ jobs:
               fi
             done
             if [[ -n "$OLD_JSON" ]]; then
-              echo "has_old_sbom=true"    >> "$GITHUB_OUTPUT"
-              echo "old_json=$OLD_JSON"   >> "$GITHUB_OUTPUT"
+              echo "has_old_sbom=true" >> "$GITHUB_OUTPUT"
+              echo "old_json=$OLD_JSON" >> "$GITHUB_OUTPUT"
             else
-              echo "has_old_sbom=false"   >> "$GITHUB_OUTPUT"
+              echo "has_old_sbom=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "has_old_sbom=false"     >> "$GITHUB_OUTPUT"
+            echo "has_old_sbom=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Generate per-flavor SBOM diff (CycloneDX CLI)
@@ -143,7 +142,7 @@ jobs:
             exit 1
           fi
 
-          OUT="SBOM_DIFF-${flavor}.md"
+          OUT="RELEASE_CHANGELOG-${flavor}.md"
 
           if [[ '${{ steps.sbom.outputs.has_old_sbom }}' != 'true' || ! -f "$OLD_JSON" ]]; then
             {
@@ -164,15 +163,18 @@ jobs:
             echo
             echo "## Components diff"
             echo '```'
-            cyclonedx diff --input-format json "$OLD_JSON" "$NEW_JSON" || true
+            # ← ここを修正：from/to を JSON 指定し、変更バージョンも出力
+            cyclonedx diff "$OLD_JSON" "$NEW_JSON" \
+              --from-format json --to-format json \
+              --component-versions || true
             echo '```'
           } > "$OUT"
 
-      - name: Upload SBOM diff artifact
+      - name: Upload changelog artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sbom-diff-${{ matrix.flavor }}
-          path: SBOM_DIFF-${{ matrix.flavor }}.md
+          name: changelog-${{ matrix.flavor }}
+          path: RELEASE_CHANGELOG-${{ matrix.flavor }}.md
           if-no-files-found: error
           retention-days: 7
 
@@ -216,16 +218,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # 念のため、旧パッケージ差分ファイルが混ざらないよう削除
-          rm -f RELEASE_CHANGELOG-*.md || true
-
           echo "Automated release for version ${{ steps.ver.outputs.tag }}." > body.txt
           echo >> body.txt
           for f in default base init micro minimal toolbox; do
-            if [[ -f "SBOM_DIFF-$f.md" ]]; then
+            if [[ -f "RELEASE_CHANGELOG-$f.md" ]]; then
               echo "## $f" >> body.txt
               echo >> body.txt
-              cat "SBOM_DIFF-$f.md" >> body.txt
+              cat "RELEASE_CHANGELOG-$f.md" >> body.txt
               echo >> body.txt
             fi
           done
@@ -243,6 +242,6 @@ jobs:
           name: "Version ${{ steps.ver.outputs.tag }}"
           body: ${{ steps.body.outputs.body }}
           files: |
-            SBOM_DIFF-*.md
+            RELEASE_CHANGELOG-*.md
             sbom/${{ steps.ver.outputs.rel }}/*.cdx.json
 
