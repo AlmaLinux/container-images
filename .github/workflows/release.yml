@@ -3,7 +3,7 @@ name: Release Container Images (SBOM diff)
 on:
   push:
     tags:
-      - "v*.*"          # 例: v9.0.20250919.0 / v10.0.20250919.0
+      - "v*.*"
   workflow_dispatch:
 
 permissions:
@@ -29,18 +29,14 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          # syft
           curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
           syft --version
-          # jq
           sudo apt-get update
           sudo apt-get install -y jq
-          # cyclonedx-cli (pin a known working version)
           CLI_VER="v0.27.0"
           curl -sSL -o /tmp/cdx \
             "https://github.com/CycloneDX/cyclonedx-cli/releases/download/${CLI_VER}/cyclonedx-linux-x64"
-          chmod +x /tmp/cdx
-          sudo mv /tmp/cdx /usr/local/bin/cyclonedx
+          chmod +x /tmp/cdx && sudo mv /tmp/cdx /usr/local/bin/cyclonedx
           cyclonedx version || true
 
       - name: Extract release numbers
@@ -48,8 +44,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF##*/}"                                 # v9.0.x / v10.0.x
-          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"    # 9 / 10
+          TAG="${GITHUB_REF##*/}"
+          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"   # 9 / 10
           PREV="$((REL-1))"
           echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
           echo "rel=$REL"   >> "$GITHUB_OUTPUT"
@@ -79,8 +75,8 @@ jobs:
           fi
           OLD="almalinux${prev}-${flavor}:__old__"
           docker build -f "$oldfile" -t "$OLD" .
-          echo "has_old=true"   >> "$GITHUB_OUTPUT"
-          echo "old_ref=$OLD"   >> "$GITHUB_OUTPUT"
+          echo "has_old=true" >> "$GITHUB_OUTPUT"
+          echo "old_ref=$OLD" >> "$GITHUB_OUTPUT"
 
       - name: Generate SBOMs (CycloneDX JSON)
         id: sbom
@@ -94,7 +90,7 @@ jobs:
 
           mkdir -p "sbom/$rel" "sbom/$prev"
 
-          # NEW: CycloneDX JSON
+          # NEW
           NEW_JSON="sbom/$rel/$flavor.cdx.json"
           for i in 1 2 3; do
             syft "docker:$NEW" -o cyclonedx-json > "$NEW_JSON" && break
@@ -104,7 +100,7 @@ jobs:
           done
           echo "new_json=$NEW_JSON" >> "$GITHUB_OUTPUT"
 
-          # OLD (if exists)
+          # OLD (if any)
           if [[ '${{ steps.oldimg.outputs.has_old }}' == 'true' ]]; then
             OLD='${{ steps.oldimg.outputs.old_ref }}'
             OLD_JSON="sbom/$prev/$flavor.cdx.json"
@@ -119,16 +115,16 @@ jobs:
               fi
             done
             if [[ -n "$OLD_JSON" ]]; then
-              echo "has_old_sbom=true"    >> "$GITHUB_OUTPUT"
-              echo "old_json=$OLD_JSON"   >> "$GITHUB_OUTPUT"
+              echo "has_old_sbom=true"  >> "$GITHUB_OUTPUT"
+              echo "old_json=$OLD_JSON" >> "$GITHUB_OUTPUT"
             else
-              echo "has_old_sbom=false"   >> "$GITHUB_OUTPUT"
+              echo "has_old_sbom=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "has_old_sbom=false"     >> "$GITHUB_OUTPUT"
+            echo "has_old_sbom=false"   >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate per-flavor SBOM diff (CycloneDX CLI)
+      - name: Generate per-flavor SBOM diff (full & summary)
         shell: bash
         run: |
           set -euo pipefail
@@ -137,13 +133,12 @@ jobs:
           flavor='${{ matrix.flavor }}'
           NEW_JSON='${{ steps.sbom.outputs.new_json }}'
           OLD_JSON='${{ steps.sbom.outputs.old_json }}'
+          OUT="RELEASE_CHANGELOG-${flavor}.md"
 
           if [[ ! -f "$NEW_JSON" ]]; then
             echo "NEW SBOM missing: $NEW_JSON" >&2
             exit 1
           fi
-
-          OUT="RELEASE_CHANGELOG-${flavor}.md"
 
           if [[ '${{ steps.sbom.outputs.has_old_sbom }}' != 'true' || ! -f "$OLD_JSON" ]]; then
             {
@@ -153,28 +148,33 @@ jobs:
               echo
               echo "_No previous SBOM to diff against._"
             } > "$OUT"
-            exit 0
+          else
+            # フルテキストの diff（本文には入れない）
+            {
+              echo "# SBOM Diff (CycloneDX): AlmaLinux $prev → $rel ($flavor)"
+              echo
+              echo "- SBOM(old): \`$OLD_JSON\`"
+              echo "- SBOM(new): \`$NEW_JSON\`"
+              echo
+              echo "## Components diff"
+              echo '```'
+              cyclonedx diff "$OLD_JSON" "$NEW_JSON" \
+                --from-format json --to-format json \
+                --component-versions || true
+              echo '```'
+            } > "$OUT"
           fi
 
-          {
-            echo "# SBOM Diff (CycloneDX): AlmaLinux $prev → $rel ($flavor)"
-            echo
-            echo "- SBOM(old): \`$OLD_JSON\`"
-            echo "- SBOM(new): \`$NEW_JSON\`"
-            echo
-            echo "## Components diff"
-            echo '```'
-            cyclonedx diff "$OLD_JSON" "$NEW_JSON" \
-              --from-format json --to-format json \
-              --component-versions || true
-            echo '```'
-          } > "$OUT"
+          # gz圧縮（添付用）
+          gzip -9 -c "$OUT" > "${OUT}.gz"
 
       - name: Upload changelog artifact
         uses: actions/upload-artifact@v4
         with:
           name: changelog-${{ matrix.flavor }}
-          path: RELEASE_CHANGELOG-${{ matrix.flavor }}.md
+          path: |
+            RELEASE_CHANGELOG-${{ matrix.flavor }}.md
+            RELEASE_CHANGELOG-${{ matrix.flavor }}.md.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -204,8 +204,10 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF##*/}"
           REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"
+          PRETTY="Version ${TAG}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "rel=$REL" >> "$GITHUB_OUTPUT"
+          echo "pretty=$PRETTY" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -213,30 +215,90 @@ jobs:
           pattern: '*'
           merge-multiple: true
 
-      - name: Build release body (all flavors)
+      - name: Build compact release body (counts only)
+        id: body
         shell: bash
         run: |
           set -euo pipefail
-          {
-            echo "Automated release for version ${{ steps.ver.outputs.tag }}."
-            echo
-            for f in default base init micro minimal toolbox; do
-              if [[ -f "RELEASE_CHANGELOG-$f.md" ]]; then
-                echo "## $f"
-                echo
-                cat "RELEASE_CHANGELOG-$f.md"
-                echo
-              fi
-            done
-          } > body.txt
+          rel='${{ steps.ver.outputs.rel }}'
+          prev_rel=$((rel-1))
+          flavors=(default base init micro minimal toolbox)
+
+          echo "Automated release for version ${{ steps.ver.outputs.tag }}." > body.txt
+          echo >> body.txt
+          echo "_Full SBOM diffs are attached as assets (RELEASE_CHANGELOG-*.md / .md.gz)._" >> body.txt
+          echo >> body.txt
+          echo "### SBOM change summary (components)" >> body.txt
+          echo >> body.txt
+          echo "| Flavor | Old→New | Added | Removed | Modified (same name, version changed) | Note |" >> body.txt
+          echo "|---|---:|---:|---:|---:|---|" >> body.txt
+
+          for f in "${flavors[@]}"; do
+            NEW="sbom/${rel}/${f}.cdx.json"
+            OLD="sbom/${prev_rel}/${f}.cdx.json"
+            if [[ ! -f "$NEW" ]]; then
+              echo "| $f | ${prev_rel}→${rel} | - | - | - | _no new SBOM_ |" >> body.txt
+              continue
+            fi
+            if [[ ! -f "$OLD" ]]; then
+              echo "| $f | ${prev_rel}→${rel} | - | - | - | _initial release for this flavor_ |" >> body.txt
+              continue
+            fi
+
+            # name をキーに、version 差分を数える（purl があれば purl を優先）
+            k='(.purl // (.name + ":" + (.group // "")))'
+            added=$(jq --argjson old "$(jq -r ".components // [] | map({k: ${k}, v: .version // \"\"})" "$OLD")" \
+                        --slurpfile old "$OLD" \
+                        --raw-output -n \
+                        --argfile new "$NEW" \
+                        '
+                        (inputs|.[0]) as $N | 0' </dev/null) # dummy, we do real work below
+
+            added=$(jq -n --argfile old "$OLD" --argfile new "$NEW" --arg k "$k" '
+              def items($doc): ($doc.components // []) | map({k: (eval($k)); v: (.version // "")});
+              def toset(stream): reduce stream[] as $x ({}; .[$x.k]=$x.v);
+              def eval($s): $s | fromjson? // (.) ; # no-op for safety
+
+              ($old | items) as $O | ($new | items) as $N
+              | ($O|toset) as $OS | ($N|toset) as $NS
+              | ($NS - $OS) | length
+            ')
+
+            removed=$(jq -n --argfile old "$OLD" --argfile new "$NEW" --arg k "$k" '
+              def items($doc): ($doc.components // []) | map({k: (eval($k)); v: (.version // "")});
+              def toset(stream): reduce stream[] as $x ({}; .[$x.k]=$x.v);
+              def eval($s): $s | fromjson? // (.) ;
+
+              ($old | items) as $O | ($new | items) as $N
+              | ($O|toset) as $OS | ($N|toset) as $NS
+              | ($OS - $NS) | length
+            ')
+
+            modified=$(jq -n --argfile old "$OLD" --argfile new "$NEW" --arg k "$k" '
+              def items($doc): ($doc.components // []) | map({k: (eval($k)); v: (.version // "")});
+              def toset(stream): reduce stream[] as $x ({}; .[$x.k]=$x.v);
+              def eval($s): $s | fromjson? // (.) ;
+
+              ($old | items) as $O | ($new | items) as $N
+              | ($O|toset) as $OS | ($N|toset) as $NS
+              | [ keys_unsorted as $keys
+                  | $keys[]
+                  | select( ($OS[.] // null) != null and ($NS[.] // null) != null and ($OS[.] != $NS[.]) )
+                ] | length
+            ')
+
+            echo "| $f | ${prev_rel}→${rel} | ${added} | ${removed} | ${modified} |  |" >> body.txt
+          done
 
       - name: Create Release (single shot)
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
-          name: "Version ${{ steps.ver.outputs.tag }}"
+          name: ${{ steps.ver.outputs.pretty }}
           body_path: body.txt
           files: |
             RELEASE_CHANGELOG-*.md
+            RELEASE_CHANGELOG-*.md.gz
             sbom/${{ steps.ver.outputs.rel }}/*.cdx.json
+          fail_on_unmatched_files: false
 
