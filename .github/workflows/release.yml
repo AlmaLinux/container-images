@@ -3,7 +3,7 @@ name: Release Container Images (SBOM diff)
 on:
   push:
     tags:
-      - "v*.*"         # v9.0.20250919.* など
+      - "v*.*"
   workflow_dispatch:
 
 permissions:
@@ -26,20 +26,17 @@ jobs:
           fetch-depth: 0
 
       - name: Install syft, cyclonedx-cli & jq
-        shell: bash
         run: |
           set -euxo pipefail
-          # syft
           curl -sSfL https://get.anchore.io/syft | sudo sh -s -- -b /usr/local/bin
           syft --version
-          # jq
           sudo apt-get update
-          sudo apt-get install -y jq
-          # cyclonedx-cli
+          sudo apt-get install -y jq gzip
+          jq --version || true
           CLI_VER="v0.27.0"
-          curl -sSL -o /tmp/cdx \
-            "https://github.com/CycloneDX/cyclonedx-cli/releases/download/${CLI_VER}/cyclonedx-linux-x64"
-          chmod +x /tmp/cdx && sudo mv /tmp/cdx /usr/local/bin/cyclonedx
+          curl -sSL -o /tmp/cdx "https://github.com/CycloneDX/cyclonedx-cli/releases/download/${CLI_VER}/cyclonedx-linux-x64"
+          chmod +x /tmp/cdx
+          sudo mv /tmp/cdx /usr/local/bin/cyclonedx
           cyclonedx version || true
 
       - name: Extract release numbers
@@ -47,8 +44,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF##*/}"                          # e.g. v9.0.20250919.test14
-          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"  # 9 / 10
+          TAG="${GITHUB_REF##*/}"
+          REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"
           PREV="$((REL-1))"
           echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
           echo "rel=$REL"   >> "$GITHUB_OUTPUT"
@@ -90,10 +87,8 @@ jobs:
           prev='${{ steps.ver.outputs.prev }}'
           flavor='${{ matrix.flavor }}'
           NEW="almalinux${rel}-${flavor}:${{ steps.ver.outputs.tag }}"
+          mkdir -p "sbom/$rel" "sbom/$prev"
 
-          mkdir -p "sbom/$rel" "sbom/$prev" "summary/$rel"
-
-          # NEW
           NEW_JSON="sbom/$rel/$flavor.cdx.json"
           for i in 1 2 3; do
             syft "docker:$NEW" -o cyclonedx-json > "$NEW_JSON" && break
@@ -103,7 +98,6 @@ jobs:
           done
           echo "new_json=$NEW_JSON" >> "$GITHUB_OUTPUT"
 
-          # OLD (if any)
           if [[ '${{ steps.oldimg.outputs.has_old }}' == 'true' ]]; then
             OLD='${{ steps.oldimg.outputs.old_ref }}'
             OLD_JSON="sbom/$prev/$flavor.cdx.json"
@@ -118,16 +112,16 @@ jobs:
               fi
             done
             if [[ -n "$OLD_JSON" ]]; then
-              echo "has_old_sbom=true"  >> "$GITHUB_OUTPUT"
+              echo "has_old_sbom=true" >> "$GITHUB_OUTPUT"
               echo "old_json=$OLD_JSON" >> "$GITHUB_OUTPUT"
             else
               echo "has_old_sbom=false" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "has_old_sbom=false"   >> "$GITHUB_OUTPUT"
+            echo "has_old_sbom=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Generate per-flavor SBOM diff (MD + tiny JSON summary)
+      - name: Generate per-flavor SBOM diff (CycloneDX CLI)
         shell: bash
         run: |
           set -euo pipefail
@@ -136,15 +130,13 @@ jobs:
           flavor='${{ matrix.flavor }}'
           NEW_JSON='${{ steps.sbom.outputs.new_json }}'
           OLD_JSON='${{ steps.sbom.outputs.old_json }}'
-          OUT="RELEASE_CHANGELOG-${flavor}.md"
-          SUM="summary/${rel}/summary-${flavor}.json"
 
+          OUT="RELEASE_CHANGELOG-${flavor}.md"
           if [[ ! -f "$NEW_JSON" ]]; then
             echo "NEW SBOM missing: $NEW_JSON" >&2
             exit 1
           fi
 
-          # ============ フル差分（本文には入れないが資産として添付） ============
           if [[ '${{ steps.sbom.outputs.has_old_sbom }}' != 'true' || ! -f "$OLD_JSON" ]]; then
             {
               echo "# Initial Release SBOM: AlmaLinux $rel ($flavor)"
@@ -153,64 +145,78 @@ jobs:
               echo
               echo "_No previous SBOM to diff against._"
             } > "$OUT"
-            echo "{\"flavor\":\"$flavor\",\"old_rel\":$prev,\"new_rel\":$rel,\"added\":0,\"removed\":0,\"modified\":0,\"note\":\"initial\"}" > "$SUM"
           else
             {
-              echo "# SBOM Diff (CycloneDX): AlmaLinux $prev → $rel ($flavor)"
+              echo "# SBOM Diff (CycloneDX): $prev → $rel ($flavor)"
               echo
               echo "- SBOM(old): \`$OLD_JSON\`"
               echo "- SBOM(new): \`$NEW_JSON\`"
               echo
               echo "## Components diff"
               echo '```'
-              cyclonedx diff "$OLD_JSON" "$NEW_JSON" \
-                --from-format json --to-format json \
-                --component-versions || true
+              cyclonedx diff --from-format json --to-format json \
+                "$OLD_JSON" "$NEW_JSON" --component-versions || true
               echo '```'
             } > "$OUT"
-
-            # 件数は jq で SBOM JSON を直接比較（purl を優先、無ければ name+group）
-              jq -n --slurpfile old "$OLD_JSON" --slurpfile nw "$NEW_JSON" '
-              # old/nw は配列で入るので [0] を使う
-              def key($c): ($c.purl // (($c.group // "") + ":" + ($c.name // "")));
-              def items($doc): ($doc.components // []) | map({k: key(.), v: (.version // "")});
-              def toset($xs): reduce $xs[] as $x ({}; .[$x.k]=$x.v);
-
-              ($old[0]|items) as $O | ($nw[0]|items) as $N
-              | ($O|toset) as $OS | ($N|toset) as $NS
-              | {
-                  flavor: $ENV.flavor,
-                  old_rel: ($ENV.prev|tonumber),
-                  new_rel: ($ENV.rel|tonumber),
-                  added:   (( $NS - $OS ) | length),
-                  removed: (( $OS - $NS ) | length),
-                  modified: ([ keys_unsorted as $keys
-                               | $keys[]
-                               | select( ($OS[.] // null) != null and ($NS[.] // null) != null and ($OS[.] != $NS[.]) )
-                             ] | length),
-                  note: ""
-                }
-            ' > "$SUM"
           fi
 
-          # gz圧縮（添付用）
-          gzip -9 -c "$OUT" > "${OUT}.gz"
+          # short summary json (counts) — 関数未使用で古い jq でも動く版
+          SUM="RELEASE_SUMMARY-${flavor}.json"
+          flavor="$flavor" rel="$rel" prev="$prev" \
+          jq -n --slurpfile old "$OLD_JSON" --slurpfile nw "$NEW_JSON" '
+            # 旧/新の components 配列を取り出し（null ガード）
+            ($old|length>0 and ($old[0]|type=="object")) as $hasOld |
+            ($nw|length>0  and ($nw[0]|type=="object"))  as $hasNew |
+            (if $hasOld then ($old[0].components // []) else [] end) as $OC |
+            (if $hasNew then ($nw[0].components  // []) else [] end) as $NC |
 
-        env:
-          flavor: ${{ matrix.flavor }}
-          rel: ${{ steps.ver.outputs.rel }}
-          prev: ${{ steps.ver.outputs.prev }}
+            # key: purl 優先、無ければ group:name
+            (reduce $OC[] as $c ({}; .[
+              ( $c.purl // ( ($c.group // "") + ":" + ($c.name // "") ) )
+            ] = ($c.version // ""))) as $OS |
 
-      - name: Upload artifacts (changelog + sbom + summary)
+            (reduce $NC[] as $c ({}; .[
+              ( $c.purl // ( ($c.group // "") + ":" + ($c.name // "") ) )
+            ] = ($c.version // ""))) as $NS |
+
+            ($OS | keys_unsorted) as $ok |
+            ($NS | keys_unsorted) as $nk |
+
+            ( [ $nk[] | select( ($OS[.] // null) == null ) ] | length ) as $added |
+            ( [ $ok[] | select( ($NS[.] // null) == null ) ] | length ) as $removed |
+            ( [ $nk[] | select( ($OS[.] // null) != null and ($NS[.] != $OS[.]) ) ] | length ) as $modified |
+
+            {
+              flavor: env.flavor,
+              old_rel: (env.prev|tonumber),
+              new_rel: (env.rel|tonumber),
+              added: $added,
+              removed: $removed,
+              modified: $modified,
+              note: (if ($hasOld and $hasNew) then "" else "no old/new sbom" end)
+            }' > "$SUM"
+
+          # 長文の .md は gzip も用意（本文に貼らずアセットで配布）
+          gzip -9f < "$OUT" > "${OUT}.gz"
+
+      - name: Upload changelog artifact (md + gz)
         uses: actions/upload-artifact@v4
         with:
-          name: flavor-${{ matrix.flavor }}
+          name: changelog-${{ matrix.flavor }}
           path: |
             RELEASE_CHANGELOG-${{ matrix.flavor }}.md
             RELEASE_CHANGELOG-${{ matrix.flavor }}.md.gz
+            RELEASE_SUMMARY-${{ matrix.flavor }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ steps.ver.outputs.rel }}-${{ matrix.flavor }}
+          path: |
             sbom/${{ steps.ver.outputs.rel }}/${{ matrix.flavor }}.cdx.json
             sbom/${{ steps.ver.outputs.prev }}/${{ matrix.flavor }}.cdx.json
-            summary/${{ steps.ver.outputs.rel }}/summary-${{ matrix.flavor }}.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -230,8 +236,8 @@ jobs:
           set -euo pipefail
           TAG="${GITHUB_REF##*/}"
           REL="$(echo "$TAG" | sed -E 's/^v([0-9]+)\..*$/\1/')"
-          echo "tag=$TAG"   >> "$GITHUB_OUTPUT"
-          echo "rel=$REL"   >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "rel=$REL" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -239,37 +245,31 @@ jobs:
           pattern: '*'
           merge-multiple: true
 
-      - name: Build compact release body (counts only from summaries)
+      - name: Build release body (summary table only; md gz は assets)
         id: body
         shell: bash
         run: |
           set -euo pipefail
-          rel='${{ steps.ver.outputs.rel }}'
-          prev_rel=$((rel-1))
-          flavors=(default base init micro minimal toolbox)
-
           echo "Automated release for version ${{ steps.ver.outputs.tag }}." > body.txt
           echo >> body.txt
-          echo "_Full SBOM diffs are attached as assets (RELEASE_CHANGELOG-*.md / .md.gz)._" >> body.txt
+          echo "Full SBOM diffs are attached as assets (RELEASE_CHANGELOG-*.md / .md.gz)." >> body.txt
           echo >> body.txt
-          echo "### SBOM change summary (components)" >> body.txt
-          echo >> body.txt
-          echo "| Flavor | Old→New | Added | Removed | Modified (same name, version changed) | Note |" >> body.txt
-          echo "|---|---:|---:|---:|---:|---|" >> body.txt
+          printf "SBOM change summary (components)\n" >> body.txt
+          printf "Flavor\tOld→New\tAdded\tRemoved\tModified (same name, version changed)\tNote\n" >> body.txt
 
-          for f in "${flavors[@]}"; do
-            sum="summary/${rel}/summary-${f}.json"
+          rel='${{ steps.ver.outputs.rel }}'
+          prev="$((rel-1))"
+          for f in default base init micro minimal toolbox; do
+            sum="RELEASE_SUMMARY-${f}.json"
             if [[ -f "$sum" ]]; then
-              added=$(jq -r '.added' "$sum")
+              added=$(jq -r '.added'    "$sum")
               removed=$(jq -r '.removed' "$sum")
               modified=$(jq -r '.modified' "$sum")
               note=$(jq -r '.note' "$sum")
-              echo "| ${f} | ${prev_rel}→${rel} | ${added} | ${removed} | ${modified} | ${note} |" >> body.txt
-              else
-              # まとめファイル無ければ初回/未生成扱い
-                echo "| ${f} | ${prev_rel}→${rel} | - | - | - | no summary |" >> body.txt
+              printf "%s\t%d→%d\t%s\t%s\t%s\t%s\n" "$f" "$prev" "$rel" "$added" "$removed" "$modified" "${note:-}" >> body.txt
+            else
+              printf "%s\t%d→%d\t-\t-\t-\tno summary\n" "$f" "$prev" "$rel" >> body.txt
             fi
-          done
           done
 
           delim="EOF_$(date +%s)_$RANDOM"
@@ -288,7 +288,5 @@ jobs:
           files: |
             RELEASE_CHANGELOG-*.md
             RELEASE_CHANGELOG-*.md.gz
-            summary/${{ steps.ver.outputs.rel }}/summary-*.json
             sbom/${{ steps.ver.outputs.rel }}/*.cdx.json
-          fail_on_unmatched_files: false
 
