@@ -103,21 +103,24 @@ jobs:
               echo
               echo "## Image Metadata (NEW)"
               docker image inspect "$NEW" | jq -r '.[0] |
-                "RepoTags: \(.RepoTags // [])\nRepoDigests: \(.RepoDigests // [])\nSize: \(.Size) bytes\nConfig: Entrypoint=\(.Config.Entrypoint // []), Cmd=\(.Config.Cmd // []), Env=\((.Config.Env // [])|length) vars, Labels=\((.Config.Labels // {})|keys|length)"'
+                "Id: \(.Id)\nRepoTags: \(.RepoTags // [])\nSize: \(.Size) bytes\nConfig: Entrypoint=\(.Config.Entrypoint // []), Cmd=\(.Config.Cmd // []), Env=\((.Config.Env // [])|length) vars, Labels=\((.Config.Labels // {})|keys|length)"'
             } > "RELEASE_CHANGELOG-${flavor}.md"
             exit 0
           fi
 
           OLD='${{ steps.oldimg.outputs.old_ref }}'
 
-          # --- Metadata snapshot
+          # --- Inspect metadata (use Image ID instead of RepoDigest)
           NEW_META=$(docker image inspect "$NEW")
           OLD_META=$(docker image inspect "$OLD")
-          NEW_DIGEST=$(echo "$NEW_META" | jq -r '.[0].RepoDigests[0] // ""')
-          OLD_DIGEST=$(echo "$OLD_META" | jq -r '.[0].RepoDigests[0] // ""')
+          NEW_ID=$(echo "$NEW_META" | jq -r '.[0].Id')
+          OLD_ID=$(echo "$OLD_META" | jq -r '.[0].Id')
           NEW_SIZE=$(echo "$NEW_META" | jq -r '.[0].Size // 0')
           OLD_SIZE=$(echo "$OLD_META" | jq -r '.[0].Size // 0')
           SIZE_DELTA=$((NEW_SIZE-OLD_SIZE))
+
+          SAME_IMG=false
+          [[ "$NEW_ID" == "$OLD_ID" ]] && SAME_IMG=true
 
           # --- container-diff: file/metadata/history
           container-diff diff daemon://"$OLD" daemon://"$NEW" \
@@ -136,9 +139,13 @@ jobs:
             echo "# Changelog (image diff): previous → ${{ steps.ver.outputs.tag }} ($flavor)"
             echo
             echo "## Image Metadata"
-            echo "- OLD digest: \`$OLD_DIGEST\`"
-            echo "- NEW digest: \`$NEW_DIGEST\`"
+            echo "- OLD id: \`$OLD_ID\`"
+            echo "- NEW id: \`$NEW_ID\`"
             echo "- Size: OLD \`$OLD_SIZE\` → NEW \`$NEW_SIZE\` (**Δ $SIZE_DELTA bytes**)"
+            if $SAME_IMG; then
+              echo
+              echo "> Note: Image IDs are identical. No filesystem/config changes are expected."
+            fi
             echo
             echo "## File Changes (from container-diff)"
             echo "- Added: \`$ADDED\`  Removed: \`$REMOVED\`  Modified: \`$MODIFIED\`"
