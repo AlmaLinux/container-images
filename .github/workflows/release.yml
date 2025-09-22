@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # === SBOM 生成ツール差し替え前提のプラガブル設定 ===
-  # 例: SYFT_CDX / TRIVY_CDX / YOUR_TOOL など。今は "DISABLED" 固定。
+  # === Pluggable setting assuming SBOM generator swap ===
+  # e.g., SYFT_CDX / TRIVY_CDX / YOUR_TOOL, etc. Currently fixed to "DISABLED".
   SBOM_TOOL: DISABLED
 
 jobs:
@@ -31,12 +31,12 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------------
-      # SBOM 生成ツールのインストール（プラガブル）
-      # 現在は SBOM を生成しないため、すべてコメントアウト。
+      # Install SBOM generator (pluggable)
+      # All commented out for now because SBOM generation is disabled.
       #
-      # 切り替え方:
-      # - SBOM_TOOL=SYFT_CDX にしてこのステップ群のコメントを外す
-      # - 他ツールにする場合は "Install: <TOOL_NAME>" ブロックを参考に置換
+      # How to switch:
+      # - Set SBOM_TOOL=SYFT_CDX and uncomment the corresponding blocks
+      # - For other tools, use "Install: <TOOL_NAME>" as a template
       # ------------------------------------------------------------
       # - name: Install: syft + cyclonedx-cli + jq (SBOM_TOOL=SYFT_CDX)
       #   if: env.SBOM_TOOL == 'SYFT_CDX'
@@ -70,12 +70,12 @@ jobs:
       #   if: env.SBOM_TOOL == 'YOUR_TOOL'
       #   run: |
       #     set -euxo pipefail
-      #     # TODO: ここに独自ツールの導入手順を記載
-      #     # 例: curl -L -o /usr/local/bin/yourtool <url>; chmod +x /usr/local/bin/yourtool
+      #     # TODO: Put the installation steps for your custom tool here
+      #     # e.g., curl -L -o /usr/local/bin/yourtool <url>; chmod +x /usr/local/bin/yourtool
       #     sudo apt-get update && sudo apt-get install -y jq gzip
       #     jq --version || true
 
-      # SBOM 無効化時は jq/gzip のみ（プレースホルダ生成に使用）
+      # When SBOM is disabled, install only jq/gzip (used for placeholder generation)
       - name: Install jq & gzip only (SBOM generation disabled)
         if: env.SBOM_TOOL == 'DISABLED'
         run: |
@@ -124,10 +124,10 @@ jobs:
           echo "old_ref=$OLD" >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------
-      # SBOM 生成（プラガブル）
-      # 現在は DISABLED のため、全ツール実行部をコメントアウトし、
-      # 代わりにプレースホルダを出力する。
-      # 有効化したいツールのブロックのコメントを外して SBOM_TOOL を切替。
+      # SBOM generation (pluggable)
+      # Currently DISABLED: comment out all tool execution blocks,
+      # and emit placeholders instead.
+      # To enable, uncomment the desired tool block and set SBOM_TOOL accordingly.
       # ------------------------------------------------------------
 
       # - name: Generate SBOM with Syft (SBOM_TOOL=SYFT_CDX)
@@ -212,14 +212,14 @@ jobs:
       #     NEW="almalinux${rel}-${flavor}:${{ steps.ver.outputs.tag }}"
       #     mkdir -p "sbom/$rel" "sbom/$prev"
       #     NEW_JSON="sbom/$rel/$flavor.cdx.json"
-      #     # TODO: ここで "$NEW" から CycloneDX JSON を "$NEW_JSON" に出力する
-      #     # 例: yourtool sbom --format cyclonedx-json --output "$NEW_JSON" "docker:$NEW"
+      #     # TODO: Output CycloneDX JSON for "$NEW" into "$NEW_JSON"
+      #     # e.g., yourtool sbom --format cyclonedx-json --output "$NEW_JSON" "docker:$NEW"
       #     echo "new_json=$NEW_JSON" >> "$GITHUB_OUTPUT"
-      #     # 旧イメージも同様に出力（存在時）
+      #     # Do the same for the old image if available
       #     if [[ '${{ steps.oldimg.outputs.has_old }}' == 'true' ]]; then
       #       OLD='${{ steps.oldimg.outputs.old_ref }}'
       #       OLD_JSON="sbom/$prev/$flavor.cdx.json"
-      #       # TODO: yourtool で旧 SBOM を生成 or 取得。失敗時は空に。
+      #       # TODO: Generate or fetch old SBOM via yourtool. Leave empty on failure.
       #       # yourtool sbom --format cyclonedx-json --output "$OLD_JSON" "docker:$OLD" || OLD_JSON=""
       #       if [[ -n "$OLD_JSON" ]]; then
       #         echo "has_old_sbom=true" >> "$GITHUB_OUTPUT"
@@ -232,10 +232,10 @@ jobs:
       #     fi
 
       # ------------------------------------------------------------
-      # SBOM Diff（プラガブル）
-      # - SYFT_CDX の場合: cyclonedx-cli を使用（下記ブロック参照）
-      # - TRIVY_CDX / YOUR_TOOL の場合: 同等の diff/compare コマンド or 独自ロジックを挿入
-      # 現在は DISABLED のため、プレースホルダのみ生成。
+      # SBOM Diff (pluggable)
+      # - For SYFT_CDX: use cyclonedx-cli (see below)
+      # - For TRIVY_CDX / YOUR_TOOL: add equivalent diff/compare logic
+      # Currently DISABLED: generate placeholders only.
       # ------------------------------------------------------------
 
       # - name: Generate SBOM diff with cyclonedx-cli (SBOM_TOOL=SYFT_CDX)
@@ -282,12 +282,12 @@ jobs:
       #   shell: bash
       #   run: |
       #     set -euo pipefail
-      #     # TODO: TRIVY_CDX / YOUR_TOOL の diff 出力を Markdown に整形して OUT に書き出す
-      #     # NEW_JSON/OLD_JSON の取得はそれぞれの sbom_* ステップの outputs を参照
-      #     # gzip も同様に作成
+      #     # TODO: Format the TRIVY_CDX / YOUR_TOOL diff output into Markdown and write to OUT
+      #     # Retrieve NEW_JSON/OLD_JSON from the outputs of the respective sbom_* steps
+      #     # Also produce a gzipped version
       #     :
 
-      # === DISABLED: プレースホルダ出力 ===
+      # === DISABLED: placeholder output ===
       - name: Write placeholder changelog & summary (SBOM temporarily disabled)
         if: env.SBOM_TOOL == 'DISABLED'
         shell: bash
@@ -313,7 +313,7 @@ jobs:
             echo "When the new SBOM generator is ready, enable one of the SBOM_TOOL blocks and remove this placeholder."
           } > "$OUT"
 
-          # summary は 0 件＋メモを残す
+          # The summary has all zeros plus a note
           cat > "RELEASE_SUMMARY-${flavor}.json" <<'JSON'
           {
             "added": 0,
@@ -335,9 +335,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # SBOM 実体の JSON は DISABLED では生成されないため、
-      # 有効化後に必要ならこのステップを再度活用してください。
-      # （if-no-files-found: ignore なので存在しなくても失敗しません）
+      # The SBOM JSON files do not exist while DISABLED.
+      # Reuse this step after enabling a tool.
+      # (if-no-files-found: ignore prevents failures when missing)
       - name: Upload SBOM artifacts (may be empty when disabled)
         uses: actions/upload-artifact@v4
         with:
@@ -373,7 +373,7 @@ jobs:
           pattern: '*'
           merge-multiple: true
 
-      - name: Build release body (summary table only; md/gz は assets)
+      - name: Build release body (summary table only; md/gz are assets)
         id: body
         shell: bash
         run: |
@@ -420,6 +420,6 @@ jobs:
           files: |
             RELEASE_CHANGELOG-*.md
             RELEASE_CHANGELOG-*.md.gz
-            # SBOM JSON はツール有効化時のみ実体が存在する想定
+            # SBOM JSON files are expected only when a tool is enabled
             sbom/${{ steps.ver.outputs.rel }}/*.cdx.json
 
