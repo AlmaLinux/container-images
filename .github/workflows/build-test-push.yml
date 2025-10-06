@@ -468,7 +468,7 @@ jobs:
 
               # Recompute diffs and extract version changes
               updated_tmp=$(mktemp)
-              awk -F'\t' 'NR==FNR{old[$1]=$2;next}{ if($1 in old && old[$1]!=$2){ print $1"\t"old[$1]" -> "$2 } }' \
+              awk -F'\t' 'NR==FNR{old[$1]=$2;next}{ if($1 in old && old[$1]!=$2){ print $1"\t"old[$1]" → "$2 } }' \
                 "${old}" "${new}" > "${updated_tmp}"
 
               addc=$(wc -l < added.tmp | tr -d ' ')
