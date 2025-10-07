@@ -366,10 +366,10 @@ jobs:
             exit 1
           fi
 
-          echo "prev_image=${IMAGE_REPO}" >> $GITHUB_ENV
-          echo "prev_tag=${CAND}" >> $GITHUB_ENV
-          echo "prev_found=true" >> $GITHUB_OUTPUT
-          echo "Previous: ${IMAGE_REPO}:${CAND}"
+          echo "prev_image=${IMAGE_REPO}" >> "$GITHUB_ENV"
+          echo "prev_tag=${PREV_TAG}"     >> "$GITHUB_ENV"
+          echo "prev_found=true"          >> "$GITHUB_OUTPUT"
+          echo "Previous: ${IMAGE_REPO}:${PREV_TAG}"
 
       -
         name: Generate RPM lists (new vs previous) per platform
