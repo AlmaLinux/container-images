@@ -357,25 +357,13 @@ jobs:
           VMIN: ${{ env.version_minor }}
           DATE: ${{ env.date_stamp }}
         run: |
+          set -euo pipefail
           IMAGE_REPO="${IMAGE_NAMES%%,*}"
-
-          # Fetch tag list and pick latest dated tag (<today): <VMJ><VMIN>-YYYYMMDD
-          TAG_JSON=$(skopeo list-tags docker://"${IMAGE_REPO}" || echo '{}')
-          CAND=$(echo "${TAG_JSON}" | jq -r '.Tags // [] | .[]' | grep -E "^${VMJ}${VMIN}-[0-9]{8}$" | sort -r | while read -r T; do
-            D="${T##*-}"
-            if [ "$D" -lt "${DATE}" ]; then
-              echo "$T"
-              break
-            fi
-          done)
-
-          # If none found, treat as first release (no comparison target)
-          if [ -z "${CAND}" ]; then
-            echo "prev_image=" >> $GITHUB_ENV
-            echo "prev_tag=" >> $GITHUB_ENV
-            echo "prev_found=false" >> $GITHUB_OUTPUT
-            echo "No previous dated tag found for ${IMAGE_REPO}" >&2
-            exit 0
+          PREV_TAG="${VMJ}"
+          echo "Checking ${IMAGE_REPO}:${PREV_TAG}"
+          if ! skopeo inspect docker://"${IMAGE_REPO}:${PREV_TAG}" >/dev/null 2>&1; then
+            echo "::error ::Tag not found: ${IMAGE_REPO}:${PREV_TAG}"
+            exit 1
           fi
 
           echo "prev_image=${IMAGE_REPO}" >> $GITHUB_ENV
