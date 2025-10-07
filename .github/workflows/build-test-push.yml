@@ -463,27 +463,46 @@ jobs:
               updc=$(wc -l < "${updated_tmp}" | tr -d ' ')
               delc=$(wc -l < removed.tmp | tr -d ' ')
 
-              echo "" >> "${out}"
-              echo "**Added (${addc})**" >> "${out}"
-              echo "" >> "${out}"
-              [ "$addc" -gt 0 ] && awk '{print "- " $0}' added.tmp >> "${out}" || echo "- (none)" >> "${out}"
+              printed=false              
 
-              echo "" >> "${out}"
-              echo "**Updated (${updc})**" >> "${out}"
-              echo "" >> "${out}"
-              if [ "$updc" -gt 0 ]; then
-                awk -F'\t' '{printf "- %s: %s\n",$1,$2}' "${updated_tmp}" >> "${out}"
-              else
-                echo "- (none)" >> "${out}"
+              # Added 
+              if [ "$addc" -gt 0 ]; then
+                {
+                  echo ""
+                  echo "**Added (${addc})**"
+                  echo ""
+                  awk '{print "- " $0}' added.tmp
+                  echo ""
+                } >> "${out}"
+                printed=true
               fi
 
-              echo "" >> "${out}"
-              echo "**Removed (${delc})**" >> "${out}"
-              echo "" >> "${out}"
-              [ "$delc" -gt 0 ] && awk '{print "- " $0}' removed.tmp >> "${out}" || echo "- (none)" >> "${out}"
-              echo "" >> "${out}"
+              # Updated
+              if [ "$updc" -gt 0 ]; then
+                {
+                  echo ""
+                  echo "**Updated (${updc})**"
+                  echo ""
+                  awk -F'\t' '{printf "- %s: %s\n",$1,$2}' "${updated_tmp}"
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
 
-              any_section=true
+              # Removed
+              if [ "$delc" -gt 0 ]; then
+                {
+                  echo ""
+                  echo "**Removed (${delc})**"
+                  echo ""
+                  awk '{print "- " $0}' removed.tmp
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
+              [ "$printed" = true ] && any_section=true
+
               rm -f added.tmp removed.tmp "${updated_tmp}"
             else
               # No previous list: treat all as Added
