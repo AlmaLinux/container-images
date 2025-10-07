@@ -442,7 +442,14 @@ jobs:
 
             [ ! -f "${new}" ] && continue
 
-            echo "### Platform: \`${plat}\`" >> "${out}"
+
+            # Collapse each platform's RPM diff into a <details> section
+            {
+              echo ""
+              echo "<details>"
+              echo "<summary>Platform: \`${plat}\`</summary>"
+              echo ""
+            } >> "${out}"
 
             if [ -f "${old}" ]; then
               # Added / Removed sets based on names
@@ -512,6 +519,12 @@ jobs:
               cut -f1 "${new}" | awk '{print "- " $0}' >> "${out}"
               echo "" >> "${out}"
               any_section=true
+
+              {
+                echo ""
+                echo "</details>"
+                echo ""
+              } >> "${out}"
             fi
           done
 
