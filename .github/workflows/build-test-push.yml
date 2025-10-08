@@ -444,12 +444,7 @@ jobs:
 
 
             # Collapse each platform's RPM diff into a <details> section
-            {
-              echo ""
-              echo "<details>"
-              echo "<summary>Platform: \`${plat}\`</summary>"
-              echo ""
-            } >> "${out}"
+            printf "\n<details>\n<summary>Platform: \`%s\`</summary>\n\n" "$plat" >> "$
 
             if [ -f "${old}" ]; then
               # Added / Removed sets based on names
@@ -520,12 +515,9 @@ jobs:
               echo "" >> "${out}"
               any_section=true
 
-              {
-                echo ""
-                echo "</details>"
-                echo ""
-              } >> "${out}"
             fi
+            # Close the <details> section for this platform
+            printf "\n</details>\n" >> "${out}"
           done
 
           $any_section || echo "_No RPM changes detected (no comparable platforms found)._" >> "${out}"
