@@ -353,23 +353,23 @@ jobs:
         id: detect-prev
         env:
           VMJ: ${{ matrix.version_major }}
-          IMT: ${{ matrix.image_types }}
-          VMIN: ${{ env.version_minor }}
-          DATE: ${{ env.date_stamp }}
         run: |
           set -euo pipefail
           IMAGE_REPO="${IMAGE_NAMES%%,*}"
           PREV_TAG="${VMJ}"
-          echo "Checking ${IMAGE_REPO}:${PREV_TAG}"
-          if ! skopeo inspect docker://"${IMAGE_REPO}:${PREV_TAG}" >/dev/null 2>&1; then
-            echo "::error ::Tag not found: ${IMAGE_REPO}:${PREV_TAG}"
-            exit 1
-          fi
 
-          echo "prev_image=${IMAGE_REPO}" >> "$GITHUB_ENV"
-          echo "prev_tag=${PREV_TAG}"     >> "$GITHUB_ENV"
-          echo "prev_found=true"          >> "$GITHUB_OUTPUT"
-          echo "Previous: ${IMAGE_REPO}:${PREV_TAG}"
+          echo "Checking ${IMAGE_REPO}:${PREV_TAG}"
+          if skopeo inspect docker://"${IMAGE_REPO}:${PREV_TAG}" >/dev/null 2>&1; then
+            echo "prev_image=${IMAGE_REPO}" >> "$GITHUB_ENV"
+            echo "prev_tag=${PREV_TAG}"     >> "$GITHUB_ENV"
+            echo "prev_found=true"          >> "$GITHUB_OUTPUT"
+            echo "Previous: ${IMAGE_REPO}:${PREV_TAG}"
+          else
+            echo "No previous tag found for ${IMAGE_REPO}:${PREV_TAG} — treating as first release."
+            echo "prev_image="              >> "$GITHUB_ENV"
+            echo "prev_tag="                >> "$GITHUB_ENV"
+            echo "prev_found=false"         >> "$GITHUB_OUTPUT"
+          fi
 
       -
         name: Generate RPM lists (new vs previous) per platform
