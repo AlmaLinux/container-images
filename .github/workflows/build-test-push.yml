@@ -527,6 +527,67 @@ jobs:
           mv "${out}" "rpm_diff_artifacts/${VMJ}/rpm_diff_${VMJ}_${IMT}.md"
 
       -
+        name: Build rechunk-style label payload (gzip+base64)
+        if: env.check_update != 0
+        id: build-rechunk-label
+        env:
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          PREV_TAG: ${{ env.prev_tag }}
+          DTS: ${{ needs.init-data.outputs.date_time_stamp }}
+          LABEL_KEY: dev.hhd.rechunk.info
+        run: |
+          set -euo pipefail
+          base="rpm_lists/${VMJ}/${IMT}"
+
+          # Create a base JSON
+          jq -n \
+            --arg vmj "${VMJ}" \
+            --arg imt "${IMT}" \
+            --arg dts "${DTS}" \
+            --arg prev "${PREV_TAG:-}" \
+            '{
+              version_major: $vmj,
+              image_type: $imt,
+              built_at: $dts,
+              prev_tag: ( $prev | select(length>0) // null ),
+              platforms: {}
+            }' > rechunk_${VMJ}_${IMT}.json
+
+            # Add per-platform package lists and SHA256
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+            key="${plat//\//_}"
+            new="${base}/new_${key}.txt"
+            [ -f "${new}" ] || continue
+
+            sha=$(sha256sum "${new}" | awk '{print $1}')
+            # Convert TSV "name<TAB>version-release" into JSON array
+            jq -Rs '
+              split("\n")
+              | map(select(length>0) | split("\t") | {n: .[0], v: .[1]})
+            ' "${new}" > pkgs_${key}.json
+
+            tmp=$(mktemp)
+            jq --arg plat "${plat}" --arg sha "${sha}" --slurpfile pkgs pkgs_${key}.json \
+               '.platforms[$plat] = { pkgs_sha256: $sha, pkgs: $pkgs[0] }' \
+               "rechunk_${VMJ}_${IMT}.json" > "${tmp}"
+            mv "${tmp}" "rechunk_${VMJ}_${IMT}.json"
+            rm -f pkgs_${key}.json
+          done
+
+          # Compress and encode JSON into a single-line lable payload
+          RCHUNK_INFO_LABEL=$(gzip -c "rechunk_${VMJ}_${IMT}.json" | base64 -w0)
+          echo "RCHUNK_INFO_LABEL=${RCHUNK_INFO_LABEL}" >> "$GITHUB_ENV"
+          echo "LABEL_KEY=${LABEL_KEY}" >> "$GITHUB_ENV"
+
+          # Debug: show summary of the generated JSON without full package lists
+          echo "[Debug] schema/preview:"
+          jq 'del(.platforms[]?.pkgs) | .platforms |= with_entries(.value |= {pkgs_sha256:.pkgs_sha256, pkgs_count:0})' "rechunk_${VMJ}_${IMT}.json" || true
+ 
+
+      -
         name: Upload RPM diff artifacts
         if: env.check_update != 0
         uses: actions/upload-artifact@v4
@@ -546,6 +607,8 @@ jobs:
           platforms: ${{ env.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ env.LABLE_KEY }}=${{ env.RCHUNK_INFO_LABEL }}
 
       -
         name: Prepare Mattermost message
