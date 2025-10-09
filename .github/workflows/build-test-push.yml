@@ -372,6 +372,17 @@ jobs:
           fi
 
       -
+        name: Install crane
+        if: env.check_update != 0
+        run: |
+          set -euo pipefail
+          ver=v0.20.2
+          curl -sSL -o /tmp/crane.tgz \
+          https://github.com/google/go-containerregistry/releases/download/${ver}/crane_Linux_x86_64.tar.gz
+          sudo tar -C /usr/local/bin -xzf /tmp/crane.tgz crane
+          crane version
+
+      -
         name: Generate RPM lists (new vs previous) per platform
         if: env.check_update != 0
         id: rpm-lists
@@ -402,11 +413,21 @@ jobs:
             # New image: refer by digest
             list_rpms "${IMG_NEW_DIGEST}" "${plat}" "rpm_lists/${VMJ}/${IMT}/new_${plat//\//_}.txt"
 
-            # Old image (if present): <image>:<tag>
+            # Old image (if present): extract package list from label instead of running it
             if [ -n "${IMG_PREV:-}" ] && [ -n "${TAG_PREV:-}" ]; then
-              docker pull --platform "${plat}" "${IMG_PREV}:${TAG_PREV}" >/dev/null 2>&1 || true
-              list_rpms "${IMG_PREV}:${TAG_PREV}" "${plat}" "rpm_lists/${VMJ}/${IMT}/old_${plat//\//_}.txt" || \
-                : # Continue even if platform not provided previously 
+              echo "Fetching previous RPM list label..."
+              label_json=$(crane config "${IMG_PREV}:${TAG_PREV}" \
+                | jq -r --arg key "${LABEL_KEY}" '.config.Labels[$key] // empty')
+              if [ -n "${label_json}" ]; then
+                val=$(jq -r --arg plat "${plat}" --argjson data "${label_json}" '($data[$plat]) // empty' </dev/null || true)
+                if [ -n "${val}" ]; then
+                  printf '%s\n' "$val" > "rpm_lists/${VMJ}/${IMT}/old_${plat//\//_}.txt"
+                else
+                  echo "No previous entry for ${plat} in label ${LABEL_KEY}"
+                fi
+              else
+                echo "No previous label found for ${plat}"
+              fi
             fi
           done
 
