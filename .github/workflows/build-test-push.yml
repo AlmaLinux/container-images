@@ -536,7 +536,7 @@ jobs:
           IMT: ${{ matrix.image_types }}
           PREV_TAG: ${{ env.prev_tag }}
           DTS: ${{ needs.init-data.outputs.date_time_stamp }}
-          LABEL_KEY: dev.hhd.rechunk.info
+          LABEL_KEY: org.almalinux.sbom
         run: |
           set -euo pipefail
           base="rpm_lists/${VMJ}/${IMT}"
