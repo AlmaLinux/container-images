@@ -598,8 +598,8 @@ jobs:
             rm -f pkgs_${key}.json
           done
 
-          # Compress and encode JSON into a single-line label payload
-          RCHUNK_INFO_LABEL=$(gzip -c "rechunk_${VMJ}_${IMT}.json" | base64 -w0)
+          # Store the JSON directly in the label payload (no compression)
+          RCHUNK_INFO_LABEL=$(cat "rechunk_${VMJ}_${IMT}.json" | jq -c .)
           echo "RCHUNK_INFO_LABEL=${RCHUNK_INFO_LABEL}" >> "$GITHUB_ENV"
           echo "LABEL_KEY=${LABEL_KEY}" >> "$GITHUB_ENV"
 
