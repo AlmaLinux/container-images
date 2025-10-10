@@ -376,9 +376,9 @@ jobs:
         if: env.check_update != 0
         run: |
           set -euo pipefail
-          ver=v0.20.2
+          ver=v0.20.6
           curl -sSL -o /tmp/crane.tgz \
-          https://github.com/google/go-containerregistry/releases/download/${ver}/crane_Linux_x86_64.tar.gz
+          https://github.com/google/go-containerregistry/releases/download/${ver}/go-containerregistry_Linux_x86_64.tar.gz
           sudo tar -C /usr/local/bin -xzf /tmp/crane.tgz crane
           crane version
 
@@ -393,6 +393,7 @@ jobs:
           PLATFORMS: ${{ env.platforms }}
           VMJ: ${{ matrix.version_major }}
           IMT: ${{ matrix.image_types }}
+          LABEL_KEY: org.almalinux.sbom
         run: |
           set -euo pipefail
           mkdir -p rpm_lists/${VMJ}/${IMT}
@@ -417,7 +418,7 @@ jobs:
             if [ -n "${IMG_PREV:-}" ] && [ -n "${TAG_PREV:-}" ]; then
               echo "Fetching previous RPM list label..."
               label_json=$(crane config "${IMG_PREV}:${TAG_PREV}" \
-                | jq -r --arg key "${LABEL_KEY}" '.config.Labels[$key] // empty')
+                | jq -r --arg key "${LABEL_KEY:-org.almalinux.sbom}" '.config.Labels[$key] // empty')                                                                 
               if [ -n "${label_json}" ]; then
                 val=$(jq -r --arg plat "${plat}" --argjson data "${label_json}" '($data[$plat]) // empty' </dev/null || true)
                 if [ -n "${val}" ]; then
@@ -444,13 +445,10 @@ jobs:
         run: |
           set -euo pipefail
           out="rpm_diff_${VMJ}_${IMT}.md"
-          echo "**AlmaLinux ${VMJ} ${IMT}** RPM changelog (build \`${DTS}\`)" > "${out}"
           if [ -n "${PREV_TAG}" ]; then
-            echo "" >> "${out}"
-            echo "- Compared to previous: \`${PREV_TAG}\`" >> "${out}"
+            echo "Changes since last version (${PREV_TAG}):" > "${out}"
           else
-            echo "" >> "${out}"
-            echo "- No previous dated tag found. Treating all as **Added**." >> "${out}"
+            echo "Changes since last version: (first release)" > "${out}"
           fi
           echo "" >> "${out}"
 
@@ -463,19 +461,15 @@ jobs:
 
             [ ! -f "${new}" ] && continue
 
-
-            # Collapse each platform's RPM diff into a <details> section
-            printf "\n<details>\n<summary>Platform: \`%s\`</summary>\n\n" "$plat" >> "$
+            {
+              echo "<details>"
+              printf "<summary>Platform: \`%s\`</summary>\n\n" "$plat"
+            } >> "${out}"
 
             if [ -f "${old}" ]; then
               # Added / Removed sets based on names
               comm -13 "${old%.txt}.names" "${new%.txt}.names" > added.tmp || true
               comm -23 "${old%.txt}.names" "${new%.txt}.names" > removed.tmp || true
-
-              # Updated: same name but different versions
-              join -j1 -t $'\t' -o 0,1.2,2.2 \
-                <(join -t $'\t' -1 1 -2 1 <(cut -f1,2 "${old}" | sort) <(cut -f1,2 "${new}" | sort -k1,1) | sort -k1,1) \
-                <(cut -f1,2 "${new}" | sort -k1,1) >/dev/null 2>&1 || true
 
               # Recompute diffs and extract version changes
               updated_tmp=$(mktemp)
@@ -486,24 +480,12 @@ jobs:
               updc=$(wc -l < "${updated_tmp}" | tr -d ' ')
               delc=$(wc -l < removed.tmp | tr -d ' ')
 
-              printed=false              
+              printed=false
+              echo "**Package Changes**" >> "${out}"
+              echo "" >> "${out}"
 
-              # Added 
-              if [ "$addc" -gt 0 ]; then
-                {
-                  echo ""
-                  echo "**Added (${addc})**"
-                  echo ""
-                  awk '{print "- " $0}' added.tmp
-                  echo ""
-                } >> "${out}"
-                printed=true
-              fi
-
-              # Updated
               if [ "$updc" -gt 0 ]; then
                 {
-                  echo ""
                   echo "**Updated (${updc})**"
                   echo ""
                   awk -F'\t' '{printf "- %s: %s\n",$1,$2}' "${updated_tmp}"
@@ -512,10 +494,18 @@ jobs:
                 printed=true
               fi
 
-              # Removed
+              if [ "$addc" -gt 0 ]; then
+                {
+                  echo "**Added (${addc})**"
+                  echo ""
+                  awk -v OFS='\t' 'NR==FNR{ver[$1]=$2;next}{n=$0; if(n!=""){ printf "- %s: %s\n", n, ver[n] }}' "${new}" added.tmp
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
               if [ "$delc" -gt 0 ]; then
                 {
-                  echo ""
                   echo "**Removed (${delc})**"
                   echo ""
                   awk '{print "- " $0}' removed.tmp
@@ -528,11 +518,11 @@ jobs:
 
               rm -f added.tmp removed.tmp "${updated_tmp}"
             else
-              # No previous list: treat all as Added
+              echo "**Package Changes**" >> "${out}"
               echo "" >> "${out}"
-              echo "**Added**" >> "${out}"
+              echo "_No previous version — initial publication (showing all as Added)_" >> "${out}"
               echo "" >> "${out}"
-              cut -f1 "${new}" | awk '{print "- " $0}' >> "${out}"
+              awk -F'\t' '{printf "- %s: %s\n",$1,$2}' "${new}" >> "${out}"
               echo "" >> "${out}"
               any_section=true
 
@@ -541,7 +531,7 @@ jobs:
             printf "\n</details>\n" >> "${out}"
           done
 
-          $any_section || echo "_No RPM changes detected (no comparable platforms found)._" >> "${out}"
+          $any_section || echo "_No package changes detected._" >> "${out}"
 
           # Move artifacts into a readable path
           mkdir -p rpm_diff_artifacts/${VMJ}
