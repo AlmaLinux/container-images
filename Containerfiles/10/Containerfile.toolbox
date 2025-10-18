@@ -93,6 +93,7 @@ RUN rm /etc/rpm/macros.image-language-conf; \
     bash-completion \
     bzip2 \
     dejavu-sans-fonts \
+    google-droid-*-fonts \
     diffutils \
     dnf-plugins-core \
     flatpak-spawn \
