@@ -241,16 +241,19 @@ jobs:
           echo $IMAGE_NAMES
 
       -
-        name: Enable containerd image store on Docker Engine
+        name: Enable containerd image store, set Docker data-root
         if: env.check_update != 0
         run: |
-          # JQ file to switch into containerd image store
+          # JQ file to switch into containerd image store and set Docker data-root
           cat << EOF > containerd-snapshotter.jq
-          .features |= . + { "containerd-snapshotter": true }
+          .features |= . + { "containerd-snapshotter": true } |
+          ."data-root" ="/mnt/docker"
           EOF
           sudo sh -c 'jq -n -f containerd-snapshotter.jq > /etc/docker/daemon.json'
           sudo systemctl restart docker
           docker info -f '{{ .DriverStatus }}'
+          echo "[Debug] Docker data-root:"
+          docker info -f '{{ .DockerRootDir }}'
 
       -
         name: Checkout ${{ github.repository }}, branch 'main'
