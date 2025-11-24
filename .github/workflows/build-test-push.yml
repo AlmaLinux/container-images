@@ -78,7 +78,7 @@ env:
   image_types: '"default", "minimal", "micro", "base", "init", "toolbox"'
 
   # Latest version
-  version_latest: 9
+  version_latest: 10
 
   # Platforms list
   platforms: 'linux/amd64, linux/ppc64le, linux/s390x, linux/arm64'
@@ -161,7 +161,7 @@ jobs:
             9)
               version_minor=".7"  ;;
             10)
-              version_minor=".0" ;;
+              version_minor=".1" ;;
             10-kitten)
               version_minor= ;;
             *)
