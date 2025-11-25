@@ -111,14 +111,6 @@ jobs:
 
     steps:
       -
-        name: "Sync ${{ env.local_library }} with ${{ env.docker_library }}, branch 'master'"
-        run: |
-          # Sync ${{ env.local_library }} with ${{ env.docker_library }}, branch 'master'
-
-          gh auth login --with-token < <(echo ${{ secrets.GIT_HUB_TOKEN }})
-          gh repo sync ${{ env.local_library }} --force --source ${{ env.docker_library }} --branch master
-
-      -
         name: Checkout ${{ env.local_library }}, branch 'master'
         uses: actions/checkout@v4
         with:
@@ -126,6 +118,24 @@ jobs:
           path: official-images
           token: ${{ secrets.GIT_HUB_TOKEN }}
           fetch-depth: 0 # Checkout all commits
+
+      -
+        name: "Force-sync ${{ env.local_library }} with ${{ env.docker_library }} to handle merge strategy divergence"
+        run: |
+          echo "Standard sync didn't resolve history divergence (likely due to merge strategy differences)"
+          echo "Performing manual force-reset to upstream state..."
+
+          cd official-images
+
+          # Add upstream as a remote
+          git remote add upstream https://github.com/${{ env.docker_library }}.git
+          git fetch upstream master
+
+          # Force reset local master to exactly match upstream master
+          git reset --hard upstream/master
+
+          # Force push to update the fork (this resolves the divergence)
+          git push origin master --force
 
       # Download uploaded above 'official-images/library/almalinux.*'
       - uses: actions/download-artifact@v4
