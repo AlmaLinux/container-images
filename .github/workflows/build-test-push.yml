@@ -444,22 +444,25 @@ jobs:
               # Run the image and query almalinux-release package's architecture
               arch=$( docker run --rm rootfs /bin/bash -c "rpm -q --qf=%{ARCH} ${almalinux_release}" )
 
-              # Map found architecture to the corresponding platform
-              platform=
+              # Map found architecture to the corresponding platforms
+              platforms=
               docker rmi rootfs
               case ${arch} in
                 i686)
-                  platform=386;;
+                  platforms=386;;
                 x86_64)
-                  platform=amd64;;
+                  platforms=amd64
+                  [[ ${{ matrix.version_major }} = '10'* ]] && \
+                    platforms="amd64 amd64_v3"
+                   ;;
                 x86_64_v2)
-                  platform=amd64_v2;;
+                  platforms=amd64_v2;;
                 ppc64le)
-                  platform=ppc64le;;
+                  platforms=ppc64le;;
                 s390x)
-                  platform=s390x;;
+                  platforms=s390x;;
                 aarch64)
-                  platform=arm64;;
+                  platforms=arm64;;
                 *)
                   echo "The '$arch' is incorrect or failed to determine architecture." && false;;
               esac
@@ -468,9 +471,12 @@ jobs:
               rm -f rootfs.tar.gz
 
               # Copy the "taken RootFS" into corresponded .tar.xz
-              cp -av ${file} ${name}-${platform}.tar.gz
-              zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/${{ matrix.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
-
+              for platform in $platforms; do
+                # Skip if the rootfs for specific platform exists. That's for the "amd64 amd64_v3" case
+                [ -f ${name}-${platform}.tar.gz ] && continue
+                cp -av ${file} ${name}-${platform}.tar.gz
+                zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/${{ matrix.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
+              done
             fi
           done
 
