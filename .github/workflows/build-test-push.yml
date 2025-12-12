@@ -23,10 +23,10 @@ on:
           default: '10'
           type: choice
           options:
-            - 10-kitten
-            - 10
-            - 9
-            - 8
+            - '10-kitten'
+            - '10'
+            - '9'
+            - '8'
 
         type_default:
           description: 'default'
@@ -200,7 +200,7 @@ jobs:
               8|9)
                 platforms="linux/386, ${platforms}" ;;
               10*)
-                platforms="linux/amd64/v2, ${platforms}" ;;
+                platforms="linux/amd64/v3, linux/amd64/v2, ${platforms}" ;;
             esac
             echo "platforms=${platforms}" >> $GITHUB_ENV
 
