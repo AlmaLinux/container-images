@@ -87,7 +87,6 @@ env:
   registries_production: 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux'
   registries_testing: 'quay.io/almalinuxautobot'
 
-
 jobs:
   init-data:
     name: Set matrix, prepare variables
@@ -352,6 +351,265 @@ jobs:
           done
 
       -
+        name: Detect previous released tag for this image type
+        if: env.check_update != 0
+        id: detect-prev
+        env:
+          VMJ: ${{ matrix.version_major }}
+        run: |
+          set -euo pipefail
+          IMAGE_REPO="${IMAGE_NAMES%%,*}"
+          PREV_TAG="${VMJ}"
+
+          echo "Checking ${IMAGE_REPO}:${PREV_TAG}"
+          if skopeo inspect docker://"${IMAGE_REPO}:${PREV_TAG}" >/dev/null 2>&1; then
+            echo "prev_image=${IMAGE_REPO}" >> "$GITHUB_ENV"
+            echo "prev_tag=${PREV_TAG}"     >> "$GITHUB_ENV"
+            echo "prev_found=true"          >> "$GITHUB_OUTPUT"
+            echo "Previous: ${IMAGE_REPO}:${PREV_TAG}"
+          else
+            echo "No previous tag found for ${IMAGE_REPO}:${PREV_TAG} — treating as first release."
+            echo "prev_image="              >> "$GITHUB_ENV"
+            echo "prev_tag="                >> "$GITHUB_ENV"
+            echo "prev_found=false"         >> "$GITHUB_OUTPUT"
+          fi
+
+      -
+        name: Install crane
+        if: env.check_update != 0
+        run: |
+          set -euo pipefail
+          ver=v0.20.6
+          curl -sSL -o /tmp/crane.tgz \
+          https://github.com/google/go-containerregistry/releases/download/${ver}/go-containerregistry_Linux_x86_64.tar.gz
+          sudo tar -C /usr/local/bin -xzf /tmp/crane.tgz crane
+          crane version
+
+      -
+        name: Generate RPM lists (new vs previous) per platform
+        if: env.check_update != 0
+        id: rpm-lists
+        env:
+          IMG_NEW_DIGEST: ${{ steps.build-images.outputs.digest }}
+          IMG_PREV: ${{ env.prev_image }}
+          TAG_PREV: ${{ env.prev_tag }}
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          LABEL_KEY: org.almalinux.sbom
+        run: |
+          set -euo pipefail
+          mkdir -p rpm_lists/${VMJ}/${IMT}
+
+          list_rpms() {
+            local ref="$1" plat="$2" outfile="$3"
+            # Save both package name and full version
+            docker run --platform="${plat}" --rm "${ref}" /bin/bash -c \
+              "rpm -qa --queryformat '%{NAME}\t%{VERSION}-%{RELEASE}\n' | sort" \
+              > "${outfile}"
+            # Also create a names-only list
+            cut -f1 "${outfile}" | sort -u > "${outfile%.txt}.names"
+          }
+
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+
+            # New image: refer by digest
+            list_rpms "${IMG_NEW_DIGEST}" "${plat}" "rpm_lists/${VMJ}/${IMT}/new_${plat//\//_}.txt"
+
+            # Old image (if present): extract package list from label instead of running it
+            if [ -n "${IMG_PREV:-}" ] && [ -n "${TAG_PREV:-}" ]; then
+              echo "Fetching previous RPM list label..."
+              label_json=$(crane config "${IMG_PREV}:${TAG_PREV}" \
+                | jq -r --arg key "${LABEL_KEY:-org.almalinux.sbom}" '.config.Labels[$key] // empty')                                                                 
+              if [ -n "${label_json}" ]; then
+                val=$(jq -r --arg plat "${plat}" --argjson data "${label_json}" '($data[$plat]) // empty' </dev/null || true)
+                if [ -n "${val}" ]; then
+                  printf '%s\n' "$val" > "rpm_lists/${VMJ}/${IMT}/old_${plat//\//_}.txt"
+                else
+                  echo "No previous entry for ${plat} in label ${LABEL_KEY}"
+                fi
+              else
+                echo "No previous label found for ${plat}"
+              fi
+            fi
+          done
+
+      -
+        name: Diff RPM sets and build Markdown changelog
+        if: env.check_update != 0
+        id: rpm-diff
+        env:
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          PREV_TAG: ${{ env.prev_tag }}
+          DTS: ${{ needs.init-data.outputs.date_time_stamp }}
+        run: |
+          set -euo pipefail
+          out="rpm_diff_${VMJ}_${IMT}.md"
+          if [ -n "${PREV_TAG}" ]; then
+            echo "Changes since last version (${PREV_TAG}):" > "${out}"
+          else
+            echo "Changes since last version: (first release)" > "${out}"
+          fi
+          echo "" >> "${out}"
+
+          any_section=false
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+            key="${plat//\//_}"
+            new="rpm_lists/${VMJ}/${IMT}/new_${key}.txt"
+            old="rpm_lists/${VMJ}/${IMT}/old_${key}.txt"
+
+            [ ! -f "${new}" ] && continue
+
+            {
+              echo "<details>"
+              printf "<summary>Platform: \`%s\`</summary>\n\n" "$plat"
+            } >> "${out}"
+
+            if [ -f "${old}" ]; then
+              # Added / Removed sets based on names
+              comm -13 "${old%.txt}.names" "${new%.txt}.names" > added.tmp || true
+              comm -23 "${old%.txt}.names" "${new%.txt}.names" > removed.tmp || true
+
+              # Recompute diffs and extract version changes
+              updated_tmp=$(mktemp)
+              awk -F'\t' 'NR==FNR{old[$1]=$2;next}{ if($1 in old && old[$1]!=$2){ print $1"\t"old[$1]" → "$2 } }' \
+                "${old}" "${new}" > "${updated_tmp}"
+
+              addc=$(wc -l < added.tmp | tr -d ' ')
+              updc=$(wc -l < "${updated_tmp}" | tr -d ' ')
+              delc=$(wc -l < removed.tmp | tr -d ' ')
+
+              printed=false
+              echo "**Package Changes**" >> "${out}"
+              echo "" >> "${out}"
+
+              if [ "$updc" -gt 0 ]; then
+                {
+                  echo "**Updated (${updc})**"
+                  echo ""
+                  awk -F'\t' '{printf "- %s: %s\n",$1,$2}' "${updated_tmp}"
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
+              if [ "$addc" -gt 0 ]; then
+                {
+                  echo "**Added (${addc})**"
+                  echo ""
+                  awk -v OFS='\t' 'NR==FNR{ver[$1]=$2;next}{n=$0; if(n!=""){ printf "- %s: %s\n", n, ver[n] }}' "${new}" added.tmp
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
+              if [ "$delc" -gt 0 ]; then
+                {
+                  echo "**Removed (${delc})**"
+                  echo ""
+                  awk '{print "- " $0}' removed.tmp
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
+              [ "$printed" = true ] && any_section=true
+
+              rm -f added.tmp removed.tmp "${updated_tmp}"
+            else
+              echo "**Package Changes**" >> "${out}"
+              echo "" >> "${out}"
+              echo "_No previous version — initial publication (showing all as Added)_" >> "${out}"
+              echo "" >> "${out}"
+              awk -F'\t' '{printf "- %s: %s\n",$1,$2}' "${new}" >> "${out}"
+              echo "" >> "${out}"
+              any_section=true
+
+            fi
+            # Close the <details> section for this platform
+            printf "\n</details>\n" >> "${out}"
+          done
+
+          $any_section || echo "_No package changes detected._" >> "${out}"
+
+          # Move artifacts into a readable path
+          mkdir -p rpm_diff_artifacts/${VMJ}
+          mv "${out}" "rpm_diff_artifacts/${VMJ}/rpm_diff_${VMJ}_${IMT}.md"
+
+      -
+        name: Build rechunk-style label payload (gzip+base64)
+        if: env.check_update != 0
+        id: build-rechunk-label
+        env:
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          PREV_TAG: ${{ env.prev_tag }}
+          DTS: ${{ needs.init-data.outputs.date_time_stamp }}
+          LABEL_KEY: org.almalinux.sbom
+        run: |
+          set -euo pipefail
+          base="rpm_lists/${VMJ}/${IMT}"
+
+          # Create a base JSON
+          jq -n \
+            --arg vmj "${VMJ}" \
+            --arg imt "${IMT}" \
+            --arg dts "${DTS}" \
+            --arg prev "${PREV_TAG:-}" \
+            '{
+              version_major: $vmj,
+              image_type: $imt,
+              built_at: $dts,
+              prev_tag: ( $prev | select(length>0) // null ),
+              platforms: {}
+            }' > rechunk_${VMJ}_${IMT}.json
+
+            # Add per-platform package lists and SHA256
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+            key="${plat//\//_}"
+            new="${base}/new_${key}.txt"
+            [ -f "${new}" ] || continue
+
+            sha=$(sha256sum "${new}" | awk '{print $1}')
+            # Convert TSV "name<TAB>version-release" into JSON array
+            jq -Rs '
+              split("\n")
+              | map(select(length>0) | split("\t") | {n: .[0], v: .[1]})
+            ' "${new}" > pkgs_${key}.json
+
+            tmp=$(mktemp)
+            jq --arg plat "${plat}" --arg sha "${sha}" --slurpfile pkgs pkgs_${key}.json \
+               '.platforms[$plat] = { pkgs_sha256: $sha, pkgs: $pkgs[0] }' \
+               "rechunk_${VMJ}_${IMT}.json" > "${tmp}"
+            mv "${tmp}" "rechunk_${VMJ}_${IMT}.json"
+            rm -f pkgs_${key}.json
+          done
+
+          # Store the JSON directly in the label payload (no compression)
+          RCHUNK_INFO_LABEL=$(cat "rechunk_${VMJ}_${IMT}.json" | jq -c .)
+          echo "RCHUNK_INFO_LABEL=${RCHUNK_INFO_LABEL}" >> "$GITHUB_ENV"
+          echo "LABEL_KEY=${LABEL_KEY}" >> "$GITHUB_ENV"
+
+          # Debug: show summary of the generated JSON without full package lists
+          echo "[Debug] schema/preview:"
+          jq 'del(.platforms[]?.pkgs) | .platforms |= with_entries(.value |= {pkgs_sha256:.pkgs_sha256, pkgs_count:0})' "rechunk_${VMJ}_${IMT}.json" || true
+ 
+
+      -
+        name: Upload RPM diff artifacts
+        if: env.check_update != 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-diff-${{ matrix.version_major }}-${{ matrix.image_types }}
+          path: rpm_diff_artifacts/${{ matrix.version_major }}/
+
+      -
         name: Push images to Client Library
         if: env.check_update != 0
         id: push-images
@@ -363,6 +621,8 @@ jobs:
           platforms: ${{ env.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            ${{ env.LABEL_KEY }}=${{ env.RCHUNK_INFO_LABEL }}
 
       -
         name: Prepare Mattermost message
@@ -526,6 +786,119 @@ jobs:
           pull: '--rebase --autostash'
           message: "AlmaLinux ${{ matrix.version_major }} ${{ matrix.image_types }} - ${{ env.date_stamp }} ${{ env.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           push: true
+
+  publish-rpm-diff:
+    name: Publish RPM diff to GitHub Release
+    runs-on: ubuntu-24.04
+    needs: [init-data, build-test-push]
+    steps:
+      -
+        name: Download all RPM diff artifacts (if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rpm-diff-*
+          merge-multiple: true
+          path: _rpm_diff_all
+        continue-on-error: true
+
+      -
+        name: Check artifacts existence
+        id: chk
+        run: |
+          set -euo pipefail
+          # Recursively search to find any rpm_diff_*.md anywhere
+          if ! find _rpm_diff_all -type f -name 'rpm_diff_*.md' | grep -q .; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No RPM diff artifacts found. Skipping release."
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+      -
+        name: Compose release notes (group by version & type)
+        if: steps.chk.outputs.found == 'true'
+        id: notes
+        run: |
+          set -euo pipefail
+
+          DATE_STAMP='${{ needs.init-data.outputs.date_stamp }}'
+          TIME_STAMP='${{ needs.init-data.outputs.time_stamp }}'
+          PROD='${{ needs.init-data.outputs.production }}'
+
+          header="# AlmaLinux Container Images – RPM diffs (${DATE_STAMP} ${TIME_STAMP} UTC)\n"
+          [ "${PROD}" = "true" ] && header="${header}\n_Release type: **Production**_\n" || header="${header}\n_Release type: **Testing / Pre-release**_\n"
+          printf "%b\n" "${header}" > RELEASE_NOTES.md
+
+          # Collect all md files regardless of where they were unpacked
+          mapfile -t FILES < <(find _rpm_diff_all -type f -name 'rpm_diff_*.md' | sort)
+
+          # Build a map: vmj::type -> file (robustly extracted from file name)
+          declare -A MAP
+          declare -A TYPES_OF
+          for f in "${FILES[@]}"; do
+            base=$(basename "$f")
+            if [[ "$base" =~ ^rpm_diff_([0-9]+|10-kitten)_([a-z0-9_-]+)\.md$ ]]; then
+              vmj="${BASH_REMATCH[1]}"
+              itype="${BASH_REMATCH[2]}"
+              key="${vmj}::${itype}"
+              MAP["$key"]="$f"
+              TYPES_OF["$vmj"]+="$itype "
+            fi
+          done
+
+          # Sort versions ascending; output types in a fixed order for readability
+          mapfile -t VMJS < <(printf "%s\n" "${!TYPES_OF[@]}" | sort -V)
+          ORDER=(default minimal micro base init toolbox)
+
+          for vmj in "${VMJS[@]}"; do
+            echo -e "\n## AlmaLinux ${vmj}\n" >> RELEASE_NOTES.md
+
+            read -r -a tlist <<< "${TYPES_OF[$vmj]}"
+
+            # Output known types in preferred order
+            for want in "${ORDER[@]}"; do
+              for itype in "${tlist[@]}"; do
+                [ "$itype" != "$want" ] && continue
+                key="${vmj}::${itype}"
+                f="${MAP[$key]}"
+                [ -z "$f" ] && continue
+                echo -e "\n### Image type: \`${itype}\`\n" >> RELEASE_NOTES.md
+                # Inline the full changelog (Added/Updated/Removed) for each flavor
+                cat "$f" >> RELEASE_NOTES.md
+              done
+            done
+            # Any unknown types go last
+            for itype in "${tlist[@]}"; do
+              if [[ ! " ${ORDER[*]} " =~ " ${itype} " ]]; then
+                key="${vmj}::${itype}"
+                f="${MAP[$key]}"
+                [ -z "$f" ] && continue
+                echo -e "\n### Image type: \`${itype}\`\n" >> RELEASE_NOTES.md
+                cat "$f" >> RELEASE_NOTES.md
+              fi
+            done
+          done
+
+          # Also archive the original markdown files for attachment
+          tar -czf rpm-diff-artifacts-${DATE_STAMP}.tar.gz -C _rpm_diff_all .
+
+          echo "tag=v${DATE_STAMP}"  >> "$GITHUB_OUTPUT"
+          echo "name=AlmaLinux Container RPM diffs (${DATE_STAMP})" >> "$GITHUB_OUTPUT"
+
+      -
+        name: Create/Update GitHub Release
+        if: steps.chk.outputs.found == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: ${{ steps.notes.outputs.name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ needs.init-data.outputs.production != 'true' }}
+          files: |
+            rpm-diff-artifacts-${{ needs.init-data.outputs.date_stamp }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify-mattermost:
     name: Mattermost notification
