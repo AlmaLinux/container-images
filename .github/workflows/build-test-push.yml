@@ -199,8 +199,10 @@ jobs:
             case ${{ matrix.version_major }} in
               8|9)
                 platforms="linux/386, ${platforms}" ;;
-              10*)
+              10)
                 platforms="linux/amd64/v2, ${platforms}" ;;
+              10-kitten)
+                platforms="linux/riscv64, linux/amd64/v2, ${platforms}" ;;
             esac
             echo "platforms=${platforms}" >> $GITHUB_ENV
 
@@ -460,6 +462,8 @@ jobs:
                   platform=s390x;;
                 aarch64)
                   platform=arm64;;
+                riscv64)
+                  platform=riscv64;;
                 *)
                   echo "The '$arch' is incorrect or failed to determine architecture." && false;;
               esac
@@ -468,7 +472,7 @@ jobs:
               rm -f rootfs.tar.gz
 
               # Copy the "taken RootFS" into corresponded .tar.xz
-              cp -av ${file} ${name}-${platform}.tar.gz
+              sudo cp -av ${file} ${name}-${platform}.tar.gz
               zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/${{ matrix.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
 
             fi
