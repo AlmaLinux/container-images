@@ -84,7 +84,7 @@ Additionally, there is another container image type:
 
 `linux/386` are for AlmaLinux 8 and 9 releases.
 
-To get packages arch, the `rpm -qf --queryformat '%{ARCH}' /etc/redhat-release` command may be used (except of `micro` image).
+To get packages arch, the `rpm -qf --queryformat '%{ARCH}' /etc/almalinux-release` command may be used (except for the `micro` image, where `uname -m` is used instead).
 
 ❗ Please, note, `linux/amd64/v2` and `linux/386` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
 
@@ -826,10 +826,14 @@ The [docker/build-push-action@v5](https://github.com/docker/build-push-action) i
 
 #### Step: Test images
 
-Every image can be tested separately for each type and platform as each image is loaded into docker. Docker run images "by digest":
+Every image is tested for each platform by verifying the release string and architecture. The container outputs the content of `/etc/almalinux-release` and the detected architecture, which is then piped to `grep` on the host side (to avoid dependency on `grep` inside the container, e.g. for `micro` images):
 ```sh
-docker run --platform=${platform} ${{ steps.build-images.outputs.digest }}
+docker run --platform=${platform} ${digest} /bin/bash -c " \
+echo \"\$(cat /etc/almalinux-release) \$(${arch_query})\"" | \
+grep -E "${release_string}.*${expected_arch}"
 ```
+
+For `micro` images, the architecture is queried via `uname -m`; for all other types, `rpm -qf --queryformat '%{ARCH}' /etc/almalinux-release` is used.
 
 #### Step: Push images to Client Library
 
