@@ -497,7 +497,7 @@ jobs:
               rm -f rootfs.tar.gz
 
               # Copy the "taken RootFS" into corresponded .tar.xz
-              sudo cp -av ${file} ${name}-${platform}.tar.gz
+              cp -av ${file} ${name}-${platform}.tar.gz
               zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/${{ matrix.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
 
             fi
