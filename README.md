@@ -79,8 +79,11 @@ Additionally, there is another container image type:
 | linux/ppc64le   | ppc64le       |
 | linux/s390x     | s390x         |
 | linux/arm64     | aarch64       |
+| linux/riscv64   | riscv64       |
 
 `linux/amd64/v2` are for AlmaLinux Kitten and 10 releases.
+
+`linux/riscv64` are for AlmaLinux Kitten.
 
 `linux/386` are for AlmaLinux 8 and 9 releases.
 
@@ -296,34 +299,40 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 .
 ├── docker-library-definition.tmpl
 ├── default
-│   ├── amd64
-│   │   ├── Dockerfile
+│   ├── amd64
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-amd64.tar.gz
-│   ├── amd64_v2
-│   │   ├── Dockerfile
+│   ├── amd64_v2
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-amd64_v2.tar.gz
-│   ├── arm64
-│   │   ├── Dockerfile
+│   ├── arm64
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-arm64.tar.gz
-│   ├── ppc64le
-│   │   ├── Dockerfile
+│   ├── ppc64le
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-ppc64le.tar.gz
-│   └── s390x
-│       ├── Dockerfile
+│   ├── riscv64
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-kitten-default-riscv64.tar.gz
+│   └── s390x
+│       ├── Dockerfile
 │       └── almalinux-10-kitten-default-s390x.tar.gz
 └── minimal
     ├── amd64
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-amd64.tar.gz
     ├── amd64_v2
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-amd64_v2.tar.gz
     ├── arm64
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-arm64.tar.gz
     ├── ppc64le
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-ppc64le.tar.gz
+    ├── riscv64
+    │   ├── Dockerfile
+    │   └── almalinux-10-kitten-minimal-riscv64.tar.gz
     └── s390x
         ├── Dockerfile
         └── almalinux-10-kitten-minimal-s390x.tar.gz
@@ -716,7 +725,9 @@ The command runs inside podman container pulling the most recent `quay.io/almali
 
 #### Step: Set platforms and registries
 
- - Extends `platforms` list with `linux/amd64/v2` if Kitten or 10
+ - Extends `platforms` list with `linux/riscv64` and `linux/amd64/v2` if Kitten
+
+ - Extends `platforms` list with `linux/amd64/v2` if AlmaLinux 10
 
  - Extends `platforms` list with `linux/386` if AlmaLinux 8 or 9
 
