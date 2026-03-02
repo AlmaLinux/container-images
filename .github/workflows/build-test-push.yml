@@ -342,15 +342,40 @@ jobs:
         id: test-images
         run: |
           # [Test]
+
+          # Release string and file name
+          if [[ ${{ matrix.version_major }} != *'kitten'* ]]; then
+            release_string="AlmaLinux release ${{ matrix.version_major }}${{ env.version_minor }}"
+          else
+            # TODO: change to the actual number when Kitten new release is available
+            release_string="AlmaLinux Kitten release 10"
+          fi
+
+          # Container platform to architecture mapping
+          declare -A platform_to_arch
+          platform_to_arch["linux/riscv64"]="riscv64"
+          platform_to_arch["linux/amd64"]="x86_64"
+          platform_to_arch["linux/ppc64le"]="ppc64le"
+          platform_to_arch["linux/s390x"]="s390x"
+          platform_to_arch["linux/arm64"]="aarch64"
+          if [[ ${{ matrix.image_types }} == *'micro'* ]]; then
+            # Machine hardware name is x86_64 on linux/386 and linux/amd64/v2 platforms
+            platform_to_arch["linux/386"]="x86_64"
+            platform_to_arch["linux/amd64/v2"]="x86_64"
+            arch_query="uname -m"
+          else
+            platform_to_arch["linux/386"]="i686"
+            platform_to_arch["linux/amd64/v2"]="x86_64_v2"
+            arch_query="rpm -qf --queryformat '%{ARCH}' /etc/almalinux-release"
+          fi
+
           platforms="${{ env.platforms }}"
           for platform in ${platforms//,/ }; do
-            echo "Testing AlmaLinux ${{ matrix.version_major }} ${{ matrix.image_types }} for ${platform} image:"
+            echo "Testing AlmaLinux ${{ matrix.version_major }} ${{ matrix.image_types }} image for ${platform}:"
 
-            # TODO: machine hardware name is x86_64 on linux/386 platform
             docker run --platform=${platform} ${{ steps.build-images.outputs.digest }} /bin/bash -c " \
-            uname -m \
-            && cat /etc/almalinux-release \
-            && ( test "${{ matrix.image_types }}" != "micro" && rpm -q gpg-pubkey) || true "
+            echo \"\$(cat /etc/almalinux-release) \$(${arch_query})\"" | \
+            grep -E "${release_string}.*${platform_to_arch[${platform}]}"
           done
 
       -
@@ -472,7 +497,7 @@ jobs:
               rm -f rootfs.tar.gz
 
               # Copy the "taken RootFS" into corresponded .tar.xz
-              sudo cp -av ${file} ${name}-${platform}.tar.gz
+              cp -av ${file} ${name}-${platform}.tar.gz
               zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/${{ matrix.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
 
             fi

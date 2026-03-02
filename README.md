@@ -79,12 +79,15 @@ Additionally, there is another container image type:
 | linux/ppc64le   | ppc64le       |
 | linux/s390x     | s390x         |
 | linux/arm64     | aarch64       |
+| linux/riscv64   | riscv64       |
 
 `linux/amd64/v2` are for AlmaLinux Kitten and 10 releases.
 
+`linux/riscv64` are for AlmaLinux Kitten.
+
 `linux/386` are for AlmaLinux 8 and 9 releases.
 
-To get packages arch, the `rpm -qf --queryformat '%{ARCH}' /etc/redhat-release` command may be used (except of `micro` image).
+To get packages arch, the `rpm -qf --queryformat '%{ARCH}' /etc/almalinux-release` command may be used (except for the `micro` image, where `uname -m` is used instead).
 
 ❗ Please, note, `linux/amd64/v2` and `linux/386` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
 
@@ -296,34 +299,40 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 .
 ├── docker-library-definition.tmpl
 ├── default
-│   ├── amd64
-│   │   ├── Dockerfile
+│   ├── amd64
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-amd64.tar.gz
-│   ├── amd64_v2
-│   │   ├── Dockerfile
+│   ├── amd64_v2
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-amd64_v2.tar.gz
-│   ├── arm64
-│   │   ├── Dockerfile
+│   ├── arm64
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-arm64.tar.gz
-│   ├── ppc64le
-│   │   ├── Dockerfile
+│   ├── ppc64le
+│   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-ppc64le.tar.gz
-│   └── s390x
-│       ├── Dockerfile
+│   ├── riscv64
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-kitten-default-riscv64.tar.gz
+│   └── s390x
+│       ├── Dockerfile
 │       └── almalinux-10-kitten-default-s390x.tar.gz
 └── minimal
     ├── amd64
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-amd64.tar.gz
     ├── amd64_v2
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-amd64_v2.tar.gz
     ├── arm64
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-arm64.tar.gz
     ├── ppc64le
-    │   ├── Dockerfile
+    │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-ppc64le.tar.gz
+    ├── riscv64
+    │   ├── Dockerfile
+    │   └── almalinux-10-kitten-minimal-riscv64.tar.gz
     └── s390x
         ├── Dockerfile
         └── almalinux-10-kitten-minimal-s390x.tar.gz
@@ -716,7 +725,9 @@ The command runs inside podman container pulling the most recent `quay.io/almali
 
 #### Step: Set platforms and registries
 
- - Extends `platforms` list with `linux/amd64/v2` if Kitten or 10
+ - Extends `platforms` list with `linux/riscv64` and `linux/amd64/v2` if Kitten
+
+ - Extends `platforms` list with `linux/amd64/v2` if AlmaLinux 10
 
  - Extends `platforms` list with `linux/386` if AlmaLinux 8 or 9
 
@@ -826,10 +837,14 @@ The [docker/build-push-action@v5](https://github.com/docker/build-push-action) i
 
 #### Step: Test images
 
-Every image can be tested separately for each type and platform as each image is loaded into docker. Docker run images "by digest":
+Every image is tested for each platform by verifying the release string and architecture. The container outputs the content of `/etc/almalinux-release` and the detected architecture, which is then piped to `grep` on the host side (to avoid dependency on `grep` inside the container, e.g. for `micro` images):
 ```sh
-docker run --platform=${platform} ${{ steps.build-images.outputs.digest }}
+docker run --platform=${platform} ${digest} /bin/bash -c " \
+echo \"\$(cat /etc/almalinux-release) \$(${arch_query})\"" | \
+grep -E "${release_string}.*${expected_arch}"
 ```
+
+For `micro` images, the architecture is queried via `uname -m`; for all other types, `rpm -qf --queryformat '%{ARCH}' /etc/almalinux-release` is used.
 
 #### Step: Push images to Client Library
 
