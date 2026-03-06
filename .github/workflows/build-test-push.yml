@@ -85,7 +85,13 @@ env:
 
   # Registries lists
   registries_production: 'docker.io/almalinux, quay.io/almalinuxorg, ghcr.io/almalinux'
-  registries_testing: 'quay.io/almalinuxautobot'
+  registries_testing: 'quay.io/ryosuke_666'
+
+  # SBOM tools repository
+  sbom_tools_repo: "https://github.com/AlmaLinux/cloud-images-sbom-tools.git"
+
+  # Fedora image for SBOM generation (needs rpm 4.19+ for SQLite RPM DB support)
+  sbom_fedora_image: "fedora:43"
 
 
 jobs:
@@ -271,6 +277,12 @@ jobs:
           path: ${{ matrix.version_major }}
 
       -
+        name: Clone SBOM tools
+        if: env.check_update != 0
+        run: |
+          git clone ${{ env.sbom_tools_repo }} /tmp/sbom-tools
+
+      -
         name: Set up QEMU
         if: env.check_update != 0
         uses: docker/setup-qemu-action@v3
@@ -379,6 +391,416 @@ jobs:
           done
 
       -
+        name: Detect previous released tag for this image type
+        if: env.check_update != 0
+        id: detect-prev
+        env:
+          VMJ: ${{ matrix.version_major }}
+        run: |
+          set -euo pipefail
+          IMAGE_REPO="${IMAGE_NAMES%%,*}"
+          PREV_TAG="${VMJ}"
+
+          echo "Checking ${IMAGE_REPO}:${PREV_TAG}"
+          if skopeo inspect docker://"${IMAGE_REPO}:${PREV_TAG}" >/dev/null 2>&1; then
+            echo "prev_image=${IMAGE_REPO}" >> "$GITHUB_ENV"
+            echo "prev_tag=${PREV_TAG}"     >> "$GITHUB_ENV"
+            echo "prev_found=true"          >> "$GITHUB_OUTPUT"
+            echo "Previous: ${IMAGE_REPO}:${PREV_TAG}"
+          else
+            echo "No previous tag found for ${IMAGE_REPO}:${PREV_TAG} — treating as first release."
+            echo "prev_image="              >> "$GITHUB_ENV"
+            echo "prev_tag="                >> "$GITHUB_ENV"
+            echo "prev_found=false"         >> "$GITHUB_OUTPUT"
+          fi
+
+      -
+        name: Install crane
+        if: env.check_update != 0
+        run: |
+          set -euo pipefail
+          ver=v0.20.6
+          curl -sSL -o /tmp/crane.tgz \
+          https://github.com/google/go-containerregistry/releases/download/${ver}/go-containerregistry_Linux_x86_64.tar.gz
+          sudo tar -C /usr/local/bin -xzf /tmp/crane.tgz crane
+          crane version
+
+      -
+        name: Install ORAS
+        if: env.check_update != 0
+        run: |
+          set -euo pipefail
+          ver=v1.2.2
+          curl -sSL -o /tmp/oras.tgz \
+            "https://github.com/oras-project/oras/releases/download/${ver}/oras_${ver#v}_linux_amd64.tar.gz"
+          sudo tar -C /usr/local/bin -xzf /tmp/oras.tgz oras
+          oras version
+
+      #
+      # ── SBOM-based changelog generation ───────────────────────────────────
+      #
+      # Instead of raw `rpm -qa` diffing, we now:
+      #   1. Generate SBOM (SPDX 2.3 JSON) per platform using cloud-images-sbom-tools
+      #   2. Extract the previous SBOM from the image label (if exists)
+      #   3. Diff the two SBOMs to produce a Markdown changelog
+      #
+
+      -
+        name: Generate SBOM per platform (new image)
+        if: env.check_update != 0
+        id: sbom-generate
+        env:
+          IMG_NEW_DIGEST: ${{ steps.build-images.outputs.digest }}
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          DTS: ${{ needs.init-data.outputs.date_time_stamp }}
+          FEDORA_IMAGE: ${{ env.sbom_fedora_image }}
+        run: |
+          set -euo pipefail
+          mkdir -p sbom_output/${VMJ}/${IMT}
+
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+            key="${plat//\//_}"
+
+            echo "=== Generating SBOM for ${plat} ==="
+
+            # Export the container filesystem and mount it on the host
+            rootfs_dir=$(mktemp -d)
+            container_id=$(docker create --platform="${plat}" "${IMG_NEW_DIGEST}")
+            docker export "${container_id}" | tar -xf - -C "${rootfs_dir}" 2>/dev/null || true
+            docker rm "${container_id}" > /dev/null
+
+            # Run SBOM generation inside a Fedora container.
+            # Ubuntu's rpm 4.18 cannot read AlmaLinux 10's SQLite RPM DB;
+            # Fedora's rpm 4.19+ has native SQLite support.
+            sbom_host_dir="$(pwd)/sbom_output/${VMJ}/${IMT}"
+            metadata_file="metadata_${key}.json"
+            sbom_file="sbom_${key}.spdx.json"
+            image_name="AlmaLinux-${VMJ}-${IMT}-${plat//\//-}"
+
+            docker run --rm \
+              -v "${rootfs_dir}:/mnt/rootfs:ro" \
+              -v /tmp/sbom-tools:/tmp/sbom-tools:ro \
+              -v "${sbom_host_dir}:/output" \
+              "${FEDORA_IMAGE}" \
+              bash -c '
+                dnf install -y python3-rpm python3-dnf python3-pip --quiet && \
+                pip install --root-user-action=ignore -r /tmp/sbom-tools/requirements.txt --quiet && \
+                python3 /tmp/sbom-tools/sbom_data_collector.py \
+                  --root /mnt/rootfs \
+                  -o /output/'"${metadata_file}"' \
+                  --verbose && \
+                python3 /tmp/sbom-tools/sbom_generator.py \
+                  '"\"${image_name}\""' \
+                  /output/'"${metadata_file}"' \
+                  /output/'"${sbom_file}"'
+              ' || {
+                echo "Warning: SBOM generation failed for ${plat}, skipping"
+                sudo rm -rf "${rootfs_dir}"
+                continue
+              }
+
+            echo "[Debug] SBOM generated: ${sbom_host_dir}/${sbom_file} ($(wc -c < "${sbom_host_dir}/${sbom_file}") bytes)"
+
+            # Clean up rootfs
+            sudo rm -rf "${rootfs_dir}"
+          done
+
+      -
+        name: Fetch previous SBOM from OCI artifact (if exists)
+        if: env.check_update != 0
+        id: sbom-fetch-prev
+        env:
+          IMG_PREV: ${{ env.prev_image }}
+          TAG_PREV: ${{ env.prev_tag }}
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+        run: |
+          set -euo pipefail
+          mkdir -p sbom_prev/${VMJ}/${IMT}
+
+          if [ -z "${IMG_PREV:-}" ] || [ -z "${TAG_PREV:-}" ]; then
+            echo "No previous image found — skipping previous SBOM fetch."
+            echo "prev_sbom_found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          full_ref="${IMG_PREV}:${TAG_PREV}"
+          echo "Fetching previous SBOMs from OCI artifacts on ${full_ref}..."
+
+          # Get manifest list for previous image
+          manifest_list=$(crane manifest "${full_ref}" 2>/dev/null) || {
+            echo "Could not fetch manifest for ${full_ref}"
+            echo "prev_sbom_found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          any_found=false
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+            key="${plat//\//_}"
+
+            IFS='/' read -r os arch variant <<< "${plat}"
+
+            # Find per-platform digest from manifest list
+            if echo "${manifest_list}" | jq -e '.manifests' >/dev/null 2>&1; then
+              if [ -n "${variant}" ]; then
+                plat_digest=$(echo "${manifest_list}" | jq -r \
+                  --arg os "${os}" --arg arch "${arch}" --arg var "${variant}" \
+                  '.manifests[] | select(.platform.os==$os and .platform.architecture==$arch and .platform.variant==$var) | .digest')
+              else
+                plat_digest=$(echo "${manifest_list}" | jq -r \
+                  --arg os "${os}" --arg arch "${arch}" \
+                  '.manifests[] | select(.platform.os==$os and .platform.architecture==$arch and (.platform.variant==null or .platform.variant=="")) | .digest')
+              fi
+            else
+              plat_digest=$(crane digest "${full_ref}" 2>/dev/null) || true
+            fi
+
+            if [ -z "${plat_digest}" ]; then
+              echo "No digest for ${plat} in previous image, skipping"
+              continue
+            fi
+
+            # Discover SBOM referrers
+            sbom_desc=$(oras discover \
+              --artifact-type "application/spdx+json" \
+              --output json \
+              "${IMG_PREV}@${plat_digest}" 2>/dev/null) || {
+                echo "No referrers found for ${plat}"
+                continue
+              }
+
+            # Get the most recent SBOM artifact digest
+            sbom_artifact_digest=$(echo "${sbom_desc}" | jq -r \
+              '.manifests // [] | sort_by(.annotations["org.opencontainers.image.created"] // "") | last | .digest // empty')
+
+            if [ -z "${sbom_artifact_digest}" ]; then
+              echo "No SBOM artifact found for ${plat}"
+              continue
+            fi
+
+            # Pull the SBOM artifact
+            pull_dir=$(mktemp -d)
+            oras pull \
+              --output "${pull_dir}" \
+              "${IMG_PREV}@${sbom_artifact_digest}" 2>/dev/null || {
+                echo "Failed to pull SBOM artifact for ${plat}"
+                rm -rf "${pull_dir}"
+                continue
+              }
+
+            # Find the SPDX JSON file in the pulled content
+            sbom_pulled=$(find "${pull_dir}" -name '*.spdx.json' -o -name '*.json' | head -1)
+            if [ -n "${sbom_pulled}" ]; then
+              cp "${sbom_pulled}" "sbom_prev/${VMJ}/${IMT}/sbom_${key}.spdx.json"
+              echo "Restored previous SBOM for ${plat} ($(wc -c < "${sbom_pulled}") bytes)"
+              any_found=true
+            else
+              echo "No SPDX JSON found in pulled artifact for ${plat}"
+            fi
+            rm -rf "${pull_dir}"
+          done
+
+          if [ "${any_found}" = "true" ]; then
+            echo "prev_sbom_found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prev_sbom_found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      -
+        name: Diff SBOMs and build Markdown changelog
+        if: env.check_update != 0
+        id: sbom-diff
+        env:
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          PREV_TAG: ${{ env.prev_tag }}
+          DTS: ${{ needs.init-data.outputs.date_time_stamp }}
+        run: |
+          set -euo pipefail
+          out="rpm_diff_${VMJ}_${IMT}.md"
+
+          if [ -n "${PREV_TAG}" ]; then
+            echo "Changes since last version (${PREV_TAG}):" > "${out}"
+          else
+            echo "Changes since last version: (first release)" > "${out}"
+          fi
+          echo "" >> "${out}"
+
+          any_section=false
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+            key="${plat//\//_}"
+            new_sbom="sbom_output/${VMJ}/${IMT}/sbom_${key}.spdx.json"
+            old_sbom="sbom_prev/${VMJ}/${IMT}/sbom_${key}.spdx.json"
+
+            [ ! -f "${new_sbom}" ] && continue
+
+            {
+              echo "<details>"
+              printf "<summary>Platform: \`%s\`</summary>\n\n" "$plat"
+            } >> "${out}"
+
+            # Extract package lists from SPDX SBOM JSON
+            # Each package has: name, versionInfo, SPDXID
+            jq -r '.packages[]? | select(.SPDXID != "SPDXRef-DOCUMENT") | [.name, .versionInfo // "unknown"] | @tsv' \
+              "${new_sbom}" | sort > /tmp/new_pkgs_${key}.txt
+
+            if [ -f "${old_sbom}" ]; then
+              jq -r '.packages[]? | select(.SPDXID != "SPDXRef-DOCUMENT") | [.name, .versionInfo // "unknown"] | @tsv' \
+                "${old_sbom}" | sort > /tmp/old_pkgs_${key}.txt
+
+              # Names only for added/removed detection
+              cut -f1 /tmp/new_pkgs_${key}.txt | sort -u > /tmp/new_names_${key}.txt
+              cut -f1 /tmp/old_pkgs_${key}.txt | sort -u > /tmp/old_names_${key}.txt
+
+              # Added / Removed sets based on names
+              comm -13 /tmp/old_names_${key}.txt /tmp/new_names_${key}.txt > /tmp/added.tmp || true
+              comm -23 /tmp/old_names_${key}.txt /tmp/new_names_${key}.txt > /tmp/removed.tmp || true
+
+              # Updated: same name, different version
+              updated_tmp=$(mktemp)
+              awk -F'\t' 'NR==FNR{old[$1]=$2;next}{ if($1 in old && old[$1]!=$2){ print $1"\t"old[$1]" → "$2 } }' \
+                /tmp/old_pkgs_${key}.txt /tmp/new_pkgs_${key}.txt > "${updated_tmp}"
+
+              addc=$(wc -l < /tmp/added.tmp | tr -d ' ')
+              updc=$(wc -l < "${updated_tmp}" | tr -d ' ')
+              delc=$(wc -l < /tmp/removed.tmp | tr -d ' ')
+
+              printed=false
+              echo "**Package Changes** _(based on SBOM diff)_" >> "${out}"
+              echo "" >> "${out}"
+
+              if [ "$updc" -gt 0 ]; then
+                {
+                  echo "**Updated (${updc})**"
+                  echo ""
+                  awk -F'\t' '{printf "- %s: %s\n",$1,$2}' "${updated_tmp}"
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
+              if [ "$addc" -gt 0 ]; then
+                {
+                  echo "**Added (${addc})**"
+                  echo ""
+                  awk -v OFS='\t' 'NR==FNR{ver[$1]=$2;next}{n=$0; if(n!=""){ printf "- %s: %s\n", n, ver[n] }}' \
+                    /tmp/new_pkgs_${key}.txt /tmp/added.tmp
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
+              if [ "$delc" -gt 0 ]; then
+                {
+                  echo "**Removed (${delc})**"
+                  echo ""
+                  awk '{print "- " $0}' /tmp/removed.tmp
+                  echo ""
+                } >> "${out}"
+                printed=true
+              fi
+
+              [ "$printed" = true ] && any_section=true
+
+              rm -f /tmp/added.tmp /tmp/removed.tmp "${updated_tmp}"
+              rm -f /tmp/old_pkgs_${key}.txt /tmp/old_names_${key}.txt
+            else
+              echo "**Package Changes** _(based on SBOM diff)_" >> "${out}"
+              echo "" >> "${out}"
+              echo "_No previous version — initial publication (showing all as Added)_" >> "${out}"
+              echo "" >> "${out}"
+              awk -F'\t' '{printf "- %s: %s\n",$1,$2}' /tmp/new_pkgs_${key}.txt >> "${out}"
+              echo "" >> "${out}"
+              any_section=true
+            fi
+
+            rm -f /tmp/new_pkgs_${key}.txt /tmp/new_names_${key}.txt
+
+            # Close the <details> section for this platform
+            printf "\n</details>\n" >> "${out}"
+          done
+
+          $any_section || echo "_No package changes detected._" >> "${out}"
+
+          # Move artifacts into a readable path
+          mkdir -p rpm_diff_artifacts/${VMJ}
+          mv "${out}" "rpm_diff_artifacts/${VMJ}/rpm_diff_${VMJ}_${IMT}.md"
+
+      -
+        name: Build SBOM label payload for image
+        if: env.check_update != 0
+        id: build-sbom-label
+        env:
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          PREV_TAG: ${{ env.prev_tag }}
+          DTS: ${{ needs.init-data.outputs.date_time_stamp }}
+          LABEL_KEY: org.almalinux.sbom
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg vmj "${VMJ}" \
+            --arg imt "${IMT}" \
+            --arg dts "${DTS}" \
+            --arg prev "${PREV_TAG:-}" \
+            '{
+              version_major: $vmj,
+              image_type: $imt,
+              built_at: $dts,
+              prev_tag: ( $prev | select(length>0) // null ),
+              sbom_storage: "oci-referrer",
+              platforms: {}
+            }' > sbom_label_${VMJ}_${IMT}.json
+          for p in ${PLATFORMS//,/ }; do
+            plat=$(echo "$p" | xargs)
+            key="${plat//\//_}"
+            sbom_file="sbom_output/${VMJ}/${IMT}/sbom_${key}.spdx.json"
+            [ -f "${sbom_file}" ] || continue
+            sha=$(sha256sum "${sbom_file}" | awk '{print $1}')
+            pkg_count=$(jq '[.packages[]? | select(.SPDXID != "SPDXRef-DOCUMENT")] | length' "${sbom_file}")
+            # Metadata only; do not embed the full SBOM body
+            tmp=$(mktemp)
+            jq --arg plat "${plat}" \
+               --arg sha "${sha}" \
+               --argjson count "${pkg_count}" \
+               '.platforms[$plat] = {
+                  sbom_sha256: $sha,
+                  package_count: $count
+                }' \
+               "sbom_label_${VMJ}_${IMT}.json" > "${tmp}"
+            mv "${tmp}" "sbom_label_${VMJ}_${IMT}.json"
+          done
+          # Lightweight label JSON into environment variable
+          SBOM_LABEL=$(jq -c . "sbom_label_${VMJ}_${IMT}.json")
+          echo "SBOM_LABEL<<EOF" >> "$GITHUB_ENV"
+          echo "$SBOM_LABEL" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+          echo "[Debug] SBOM label payload:"
+          cat "sbom_label_${VMJ}_${IMT}.json"
+
+      - name: Upload SBOM artifacts
+        if: env.check_update != 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.version_major }}-${{ matrix.image_types }}
+          path: sbom_output/${{ matrix.version_major }}/${{ matrix.image_types }}/
+
+      - name: Upload RPM diff artifacts
+        if: env.check_update != 0
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-diff-${{ matrix.version_major }}-${{ matrix.image_types }}
+          path: rpm_diff_artifacts/${{ matrix.version_major }}/
+
+      -
         name: Push images to Client Library
         if: env.check_update != 0
         id: push-images
@@ -390,6 +812,80 @@ jobs:
           platforms: ${{ env.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.almalinux.sbom=${{ env.SBOM_LABEL }}
+
+      -
+        name: Push SBOM artifacts to registries (OCI referrers)
+        if: env.check_update != 0
+        id: sbom-push-oci
+        env:
+          PLATFORMS: ${{ env.platforms }}
+          VMJ: ${{ matrix.version_major }}
+          IMT: ${{ matrix.image_types }}
+          IMAGE_NAMES: ${{ env.IMAGE_NAMES }}
+        run: |
+          set -euo pipefail
+
+          for image_ref in ${IMAGE_NAMES//,/ }; do
+            image_ref=$(echo "$image_ref" | xargs)
+            tag="${VMJ}"
+            full_ref="${image_ref}:${tag}"
+
+            echo "=== Processing ${full_ref} ==="
+
+            # Get the manifest list to find per-platform digests
+            manifest_list=$(crane manifest "${full_ref}" 2>/dev/null) || {
+              echo "Warning: Could not fetch manifest for ${full_ref}, skipping"
+              continue
+            }
+
+            for p in ${PLATFORMS//,/ }; do
+              plat=$(echo "$p" | xargs)
+              key="${plat//\//_}"
+              sbom_file="sbom_output/${VMJ}/${IMT}/sbom_${key}.spdx.json"
+
+              [ -f "${sbom_file}" ] || {
+                echo "No SBOM for ${plat}, skipping"
+                continue
+              }
+
+              # Parse platform into os/arch/variant
+              IFS='/' read -r os arch variant <<< "${plat}"
+
+              # Extract the per-platform digest from manifest list
+              if echo "${manifest_list}" | jq -e '.manifests' >/dev/null 2>&1; then
+                if [ -n "${variant}" ]; then
+                  plat_digest=$(echo "${manifest_list}" | jq -r \
+                    --arg os "${os}" --arg arch "${arch}" --arg var "${variant}" \
+                    '.manifests[] | select(.platform.os==$os and .platform.architecture==$arch and .platform.variant==$var) | .digest')
+                else
+                  plat_digest=$(echo "${manifest_list}" | jq -r \
+                    --arg os "${os}" --arg arch "${arch}" \
+                    '.manifests[] | select(.platform.os==$os and .platform.architecture==$arch and (.platform.variant==null or .platform.variant=="")) | .digest')
+                fi
+              else
+                plat_digest=$(crane digest "${full_ref}" 2>/dev/null) || true
+              fi
+
+              if [ -z "${plat_digest}" ]; then
+                echo "Warning: No digest found for ${plat} in ${full_ref}, skipping"
+                continue
+              fi
+
+              echo "Pushing SBOM for ${plat} -> ${image_ref}@${plat_digest}"
+
+              oras attach \
+                --artifact-type "application/spdx+json" \
+                "${image_ref}@${plat_digest}" \
+                "${sbom_file}:application/spdx+json" || {
+                  echo "Warning: Failed to push SBOM artifact for ${plat} to ${image_ref}, continuing"
+                  continue
+                }
+
+              echo "Successfully attached SBOM for ${plat} to ${image_ref}@${plat_digest}"
+            done
+          done
 
       -
         name: Prepare Mattermost message
@@ -555,6 +1051,130 @@ jobs:
           pull: '--rebase --autostash'
           message: "AlmaLinux ${{ matrix.version_major }} ${{ matrix.image_types }} - ${{ env.date_stamp }} ${{ env.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           push: true
+
+  publish-rpm-diff:
+    name: Publish RPM diff to GitHub Release
+    runs-on: ubuntu-24.04
+    needs: [init-data, build-test-push]
+    steps:
+      - name: Download all RPM diff artifacts (if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: rpm-diff-*
+          merge-multiple: true
+          path: _rpm_diff_all
+        continue-on-error: true
+
+      - name: Download all SBOM artifacts (if any)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sbom-*
+          merge-multiple: true
+          path: _sbom_all
+        continue-on-error: true
+
+      - name: Check artifacts existence
+        id: chk
+        run: |
+          set -euo pipefail
+          # Recursively search to find any rpm_diff_*.md anywhere
+          if ! find _rpm_diff_all -type f -name 'rpm_diff_*.md' | grep -q .; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No RPM diff artifacts found. Skipping release."
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+      - name: Compose release notes (group by version & type)
+        if: steps.chk.outputs.found == 'true'
+        id: notes
+        run: |
+          set -euo pipefail
+
+          DATE_STAMP='${{ needs.init-data.outputs.date_stamp }}'
+          TIME_STAMP='${{ needs.init-data.outputs.time_stamp }}'
+          PROD='${{ needs.init-data.outputs.production }}'
+
+          header="# AlmaLinux Container Images – SBOM-based RPM diffs (${DATE_STAMP} ${TIME_STAMP} UTC)\n"
+          [ "${PROD}" = "true" ] && header="${header}\n_Release type: **Production**_\n" || header="${header}\n_Release type: **Testing / Pre-release**_\n"
+          header="${header}\n_Changelogs generated from SPDX 2.3 SBOM comparison using [cloud-images-sbom-tools](https://github.com/AlmaLinux/cloud-images-sbom-tools)_\n"
+          printf "%b\n" "${header}" > RELEASE_NOTES.md
+
+          # Collect all md files regardless of where they were unpacked
+          mapfile -t FILES < <(find _rpm_diff_all -type f -name 'rpm_diff_*.md' | sort)
+
+          # Build a map: vmj::type -> file (robustly extracted from file name)
+          declare -A MAP
+          declare -A TYPES_OF
+          for f in "${FILES[@]}"; do
+            base=$(basename "$f")
+            if [[ "$base" =~ ^rpm_diff_([0-9]+|10-kitten)_([a-z0-9_-]+)\.md$ ]]; then
+              vmj="${BASH_REMATCH[1]}"
+              itype="${BASH_REMATCH[2]}"
+              key="${vmj}::${itype}"
+              MAP["$key"]="$f"
+              TYPES_OF["$vmj"]+="$itype "
+            fi
+          done
+
+          # Sort versions ascending; output types in a fixed order for readability
+          mapfile -t VMJS < <(printf "%s\n" "${!TYPES_OF[@]}" | sort -V)
+          ORDER=(default minimal micro base init toolbox)
+
+          for vmj in "${VMJS[@]}"; do
+            echo -e "\n## AlmaLinux ${vmj}\n" >> RELEASE_NOTES.md
+
+            read -r -a tlist <<< "${TYPES_OF[$vmj]}"
+
+            # Output known types in preferred order
+            for want in "${ORDER[@]}"; do
+              for itype in "${tlist[@]}"; do
+                [ "$itype" != "$want" ] && continue
+                key="${vmj}::${itype}"
+                f="${MAP[$key]}"
+                [ -z "$f" ] && continue
+                echo -e "\n### Image type: \`${itype}\`\n" >> RELEASE_NOTES.md
+                # Inline the full changelog (Added/Updated/Removed) for each flavor
+                cat "$f" >> RELEASE_NOTES.md
+              done
+            done
+            # Any unknown types go last
+            for itype in "${tlist[@]}"; do
+              if [[ ! " ${ORDER[*]} " =~ " ${itype} " ]]; then
+                key="${vmj}::${itype}"
+                f="${MAP[$key]}"
+                [ -z "$f" ] && continue
+                echo -e "\n### Image type: \`${itype}\`\n" >> RELEASE_NOTES.md
+                cat "$f" >> RELEASE_NOTES.md
+              fi
+            done
+          done
+
+          # Archive the original markdown files + SBOM files for attachment
+          tar -czf rpm-diff-artifacts-${DATE_STAMP}.tar.gz -C _rpm_diff_all .
+
+          # Also archive SBOM artifacts if they exist
+          if [ -d _sbom_all ] && find _sbom_all -type f -name '*.spdx.json' | grep -q .; then
+            tar -czf sbom-artifacts-${DATE_STAMP}.tar.gz -C _sbom_all .
+          fi
+
+          echo "tag=v${DATE_STAMP}"  >> "$GITHUB_OUTPUT"
+          echo "name=AlmaLinux Container RPM diffs (${DATE_STAMP})" >> "$GITHUB_OUTPUT"
+
+      - name: Create/Update GitHub Release
+        if: steps.chk.outputs.found == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.notes.outputs.tag }}
+          name: ${{ steps.notes.outputs.name }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ needs.init-data.outputs.production != 'true' }}
+          files: |
+            rpm-diff-artifacts-${{ needs.init-data.outputs.date_stamp }}.tar.gz
+            sbom-artifacts-${{ needs.init-data.outputs.date_stamp }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify-mattermost:
     name: Mattermost notification
