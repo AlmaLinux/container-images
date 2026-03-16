@@ -44,14 +44,14 @@ jobs:
     steps:
       -
         name: Checkout ${{ github.repository }}, branch '${{ matrix.version_major }}'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ matrix.version_major }}
           fetch-depth: 0 # Checkout all commits
 
       -
         name: Checkout ${{ env.local_library }}, branch 'master'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.local_library }}
           path: official-images
@@ -96,7 +96,7 @@ jobs:
           cat official-images/library/almalinux.${{ matrix.version_major }}.${{ matrix.image_types }}
 
       # Upload 'official-images/library/almalinux.*'
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         name: Upload definitions for ${{ matrix.version_major }} ${{ matrix.image_types }}
         with:
           name: definition-${{ matrix.version_major }}.${{ matrix.image_types }}
@@ -112,7 +112,7 @@ jobs:
     steps:
       -
         name: Checkout ${{ env.local_library }}, branch 'master'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.local_library }}
           path: official-images
@@ -138,7 +138,7 @@ jobs:
           git push origin master --force
 
       # Download uploaded above 'official-images/library/almalinux.*'
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         name: Download all definitions
         with:
           pattern: definition-*
