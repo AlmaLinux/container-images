@@ -350,6 +350,7 @@ jobs:
             # TODO: change to the actual number when Kitten new release is available
             release_string="AlmaLinux Kitten release 10"
           fi
+          echo "release_string=${release_string}" >> $GITHUB_ENV
 
           # Container platform to architecture mapping
           declare -A platform_to_arch
@@ -390,6 +391,86 @@ jobs:
           platforms: ${{ env.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+
+      -
+        name: Generate Docker Hub README
+        if: contains(env.registries, 'docker.io') && matrix.image_types != 'default' && env.check_update != 0
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          # Generate Docker Hub repository README with current tags
+
+          image_type="${{ matrix.image_types }}"
+          version="${{ matrix.version_major }}"
+
+          # Image type description
+          case ${image_type} in
+            base)
+              type_desc="The Base Image is designed to be a base for your containerized applications, middleware and utilities. Includes helpful OS tools like find, tar, vi, etc., and a full DNF stack." ;;
+            minimal)
+              type_desc="The Minimal Image is a stripped-down image that uses microdnf as package manager. Designed for applications that come with their own dependencies bundled (e.g. GO, NodeJS, Java)." ;;
+            micro)
+              type_desc="The Micro Image is distributed without any package manager. Uses the package manager on the underlying host to install packages, typically using Buildah or Multi-stage builds with Podman. The most secure and smallest image." ;;
+            init)
+              type_desc="The Init Image extends the base image, designed to run an init system as PID 1 for running multi-services inside a container. Systemd is enabled as init system." ;;
+            toolbox)
+              type_desc="The Toolbox Image is designed to be used with toolbox or distrobox utilities for development and debugging." ;;
+            *)
+              type_desc="AlmaLinux ${version} ${image_type} container image." ;;
+          esac
+
+          # Extract Docker Hub namespace from registries (e.g. 'docker.io/almalinux' -> 'almalinux')
+          dockerhub_namespace=$(echo "${{ env.registries }}" | tr ',' '\n' | grep 'docker.io' | sed 's|.*docker.io/||;s|[[:space:]]||g')
+          echo "dockerhub_namespace=${dockerhub_namespace}" >> $GITHUB_ENV
+
+          # Extract tag names from docker.io tags, strip the repository prefix
+          supported_tags=$(echo "${TAGS}" | grep 'docker.io' | sed 's|.*/[^:]*:|- `|;s|$|`|')
+
+          # Prepare platforms list on markdown format
+          platforms="${{ env.platforms }}"
+          platforms_list="- \`${platforms//, /\`$'\n'- \`}\`"
+
+          cat > dockerhub-readme.md << EOF
+          ### Quick reference
+
+          - **Maintained by**: [The AlmaLinux OS Foundation](https://almalinux.org) Cloud Special Interest Group (SIG)
+          - **Where to file issues**: [GitHub Issues](https://github.com/AlmaLinux/container-images/issues) or [bugs.almalinux.org](https://bugs.almalinux.org)
+
+          ### Recent tags
+
+          ${supported_tags}
+
+          ### Supported architectures
+
+          ${platforms_list}
+
+          ### About this image
+
+          **[AlmaLinux OS](https://almalinux.org)** is an Open Source and forever-free enterprise Linux distribution, governed and driven by the community, focused on long-term stability and a robust production-grade platform. AlmaLinux OS is binary compatible with RHEL®.
+
+          ${type_desc}
+
+          \`\`\`bash
+          docker pull ${dockerhub_namespace}/${version}-${image_type}
+          \`\`\`
+
+          For more information, please visit the [AlmaLinux container-images repository](https://github.com/AlmaLinux/container-images).
+
+          ### License
+
+          View [license information](https://almalinux.org/p/the-almalinux-os-licensing-policy/) for the software contained in this image.
+          EOF
+
+      -
+        name: Update Docker Hub repository description
+        if: contains(env.registries, 'docker.io') && matrix.image_types != 'default' && env.check_update != 0
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ env.production == 'true' && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
+          password: ${{ env.production == 'true' && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
+          repository: ${{ env.dockerhub_namespace }}/${{ matrix.version_major }}-${{ matrix.image_types }}
+          short-description: ${{ env.release_string }} ${{ matrix.image_types }} container image
+          readme-filepath: ./dockerhub-readme.md
 
       -
         name: Prepare Mattermost message
