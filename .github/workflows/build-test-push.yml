@@ -398,68 +398,39 @@ jobs:
         env:
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          # Generate Docker Hub repository README with current tags
+          # Generate Docker Hub repository README from template
 
-          image_type="${{ matrix.image_types }}"
-          version="${{ matrix.version_major }}"
+          export image_type="${{ matrix.image_types }}"
+          export version="${{ matrix.version_major }}"
 
           # Image type description
           case ${image_type} in
             base)
-              type_desc="The Base Image is designed to be a base for your containerized applications, middleware and utilities. Includes helpful OS tools like find, tar, vi, etc., and a full DNF stack." ;;
+              export type_desc="The Base Image is designed to be a base for your containerized applications, middleware and utilities. Includes helpful OS tools like find, tar, vi, etc., and a full DNF stack." ;;
             minimal)
-              type_desc="The Minimal Image is a stripped-down image that uses microdnf as package manager. Designed for applications that come with their own dependencies bundled (e.g. GO, NodeJS, Java)." ;;
+              export type_desc="The Minimal Image is a stripped-down image that uses microdnf as package manager. Designed for applications that come with their own dependencies bundled (e.g. GO, NodeJS, Java)." ;;
             micro)
-              type_desc="The Micro Image is distributed without any package manager. Uses the package manager on the underlying host to install packages, typically using Buildah or Multi-stage builds with Podman. The most secure and smallest image." ;;
+              export type_desc="The Micro Image is distributed without any package manager. Uses the package manager on the underlying host to install packages, typically using Buildah or Multi-stage builds with Podman. The most secure and smallest image." ;;
             init)
-              type_desc="The Init Image extends the base image, designed to run an init system as PID 1 for running multi-services inside a container. Systemd is enabled as init system." ;;
+              export type_desc="The Init Image extends the base image, designed to run an init system as PID 1 for running multi-services inside a container. Systemd is enabled as init system." ;;
             toolbox)
-              type_desc="The Toolbox Image is designed to be used with toolbox or distrobox utilities for development and debugging." ;;
+              export type_desc="The Toolbox Image is designed to be used with toolbox or distrobox utilities for development and debugging." ;;
             *)
-              type_desc="AlmaLinux ${version} ${image_type} container image." ;;
+              export type_desc="AlmaLinux ${version} ${image_type} container image." ;;
           esac
 
           # Extract Docker Hub namespace from registries (e.g. 'docker.io/almalinux' -> 'almalinux')
-          dockerhub_namespace=$(echo "${{ env.registries }}" | tr ',' '\n' | grep 'docker.io' | sed 's|.*docker.io/||;s|[[:space:]]||g')
+          export dockerhub_namespace=$(echo "${{ env.registries }}" | tr ',' '\n' | grep 'docker.io' | sed 's|.*docker.io/||;s|[[:space:]]||g')
           echo "dockerhub_namespace=${dockerhub_namespace}" >> $GITHUB_ENV
 
           # Extract tag names from docker.io tags, strip the repository prefix
-          supported_tags=$(echo "${TAGS}" | grep 'docker.io' | sed 's|.*/[^:]*:|- `|;s|$|`|')
+          export supported_tags=$(echo "${TAGS}" | grep 'docker.io' | sed 's|.*/[^:]*:|- `|;s|$|`|')
 
-          # Prepare platforms list on markdown format
+          # Prepare platforms list in markdown format
           platforms="${{ env.platforms }}"
-          platforms_list="- \`${platforms//, /\`$'\n'- \`}\`"
+          export platforms_list="- \`${platforms//, /\`$'\n'- \`}\`"
 
-          cat > dockerhub-readme.md << EOF
-          ### Quick reference
-
-          - **Maintained by**: [The AlmaLinux OS Foundation](https://almalinux.org) Cloud Special Interest Group (SIG)
-          - **Where to file issues**: [GitHub Issues](https://github.com/AlmaLinux/container-images/issues) or [bugs.almalinux.org](https://bugs.almalinux.org)
-
-          ### Recent tags
-
-          ${supported_tags}
-
-          ### Supported architectures
-
-          ${platforms_list}
-
-          ### About this image
-
-          **[AlmaLinux OS](https://almalinux.org)** is an Open Source and forever-free enterprise Linux distribution, governed and driven by the community, focused on long-term stability and a robust production-grade platform. AlmaLinux OS is binary compatible with RHEL®.
-
-          ${type_desc}
-
-          \`\`\`bash
-          docker pull ${dockerhub_namespace}/${version}-${image_type}
-          \`\`\`
-
-          For more information, please visit the [AlmaLinux container-images repository](https://github.com/AlmaLinux/container-images).
-
-          ### License
-
-          View [license information](https://almalinux.org/p/the-almalinux-os-licensing-policy/) for the software contained in this image.
-          EOF
+          envsubst < .github/dockerhub-readme.md.tmpl > dockerhub-readme.md
 
       -
         name: Update Docker Hub repository description
