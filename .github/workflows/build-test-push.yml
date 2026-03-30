@@ -350,6 +350,7 @@ jobs:
             # TODO: change to the actual number when Kitten new release is available
             release_string="AlmaLinux Kitten release 10"
           fi
+          echo "release_string=${release_string}" >> $GITHUB_ENV
 
           # Container platform to architecture mapping
           declare -A platform_to_arch
@@ -390,6 +391,57 @@ jobs:
           platforms: ${{ env.platforms }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+
+      -
+        name: Generate Docker Hub README
+        if: contains(env.registries, 'docker.io') && matrix.image_types != 'default' && env.check_update != 0
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          # Generate Docker Hub repository README from template
+
+          export image_type="${{ matrix.image_types }}"
+          export version="${{ matrix.version_major }}"
+
+          # Image type description
+          case ${image_type} in
+            base)
+              export type_desc="The Base Image is designed to be a base for your containerized applications, middleware and utilities. Includes helpful OS tools like find, tar, vi, etc., and a full DNF stack." ;;
+            minimal)
+              export type_desc="The Minimal Image is a stripped-down image that uses microdnf as package manager. Designed for applications that come with their own dependencies bundled (e.g. GO, NodeJS, Java)." ;;
+            micro)
+              export type_desc="The Micro Image is distributed without any package manager. Uses the package manager on the underlying host to install packages, typically using Buildah or Multi-stage builds with Podman. The most secure and smallest image." ;;
+            init)
+              export type_desc="The Init Image extends the base image, designed to run an init system as PID 1 for running multi-services inside a container. Systemd is enabled as init system." ;;
+            toolbox)
+              export type_desc="The Toolbox Image is designed to be used with toolbox or distrobox utilities for development and debugging." ;;
+            *)
+              export type_desc="AlmaLinux ${version} ${image_type} container image." ;;
+          esac
+
+          # Extract Docker Hub namespace from registries (e.g. 'docker.io/almalinux' -> 'almalinux')
+          export dockerhub_namespace=$(echo "${{ env.registries }}" | tr ',' '\n' | grep 'docker.io' | sed 's|.*docker.io/||;s|[[:space:]]||g')
+          echo "dockerhub_namespace=${dockerhub_namespace}" >> $GITHUB_ENV
+
+          # Extract tag names from docker.io tags, strip the repository prefix
+          export supported_tags=$(echo "${TAGS}" | grep 'docker.io' | sed 's|.*/[^:]*:|- `|;s|$|`|')
+
+          # Prepare platforms list in markdown format
+          platforms="${{ env.platforms }}"
+          export platforms_list="- \`${platforms//, /\`$'\n'- \`}\`"
+
+          envsubst < .github/dockerhub-readme.md.tmpl > dockerhub-readme.md
+
+      -
+        name: Update Docker Hub repository description
+        if: contains(env.registries, 'docker.io') && matrix.image_types != 'default' && env.check_update != 0
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ env.production == 'true' && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
+          password: ${{ env.production == 'true' && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
+          repository: ${{ env.dockerhub_namespace }}/${{ matrix.version_major }}-${{ matrix.image_types }}
+          short-description: ${{ env.release_string }} ${{ matrix.image_types }} container image
+          readme-filepath: ./dockerhub-readme.md
 
       -
         name: Prepare Mattermost message
