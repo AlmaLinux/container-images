@@ -202,7 +202,7 @@ jobs:
               10)
                 platforms="linux/amd64/v2, ${platforms}" ;;
               10-kitten)
-                platforms="linux/riscv64, linux/amd64/v2, ${platforms}" ;;
+                platforms="linux/386, linux/riscv64, linux/amd64/v2, ${platforms}" ;;
             esac
             echo "platforms=${platforms}" >> $GITHUB_ENV
 
