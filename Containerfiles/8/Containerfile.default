@@ -17,6 +17,7 @@ RUN mkdir /mnt/sys-root; \
     langpacks-en \
     less \
     libcurl-minimal \
+    python3-dnf-plugins-core \
     rootfiles \
     tar \
     vim-minimal \

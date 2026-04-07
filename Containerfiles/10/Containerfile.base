@@ -15,6 +15,7 @@ RUN mkdir -p /mnt/sys-root; \
     gzip \
     libcurl-minimal \
     libusbx \
+    python3-dnf-plugins-core \
     rootfiles \
     systemd \
     tar \
