@@ -14,6 +14,7 @@ RUN mkdir -p /mnt/sys-root; \
     langpacks-en \
     libuser \
     passwd \
+    python3-dnf-plugins-core \
     rootfiles \
     systemd \
     tar \
