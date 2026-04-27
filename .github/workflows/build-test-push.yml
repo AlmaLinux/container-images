@@ -435,7 +435,7 @@ jobs:
       -
         name: Update Docker Hub repository description
         if: contains(env.registries, 'docker.io') && matrix.image_types != 'default' && env.check_update != 0
-        uses: peter-evans/dockerhub-description@v4
+        uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ env.production == 'true' && secrets.DOCKERHUB_USERNAME || secrets.TEST_DOCKERHUB_USERNAME }}
           password: ${{ env.production == 'true' && secrets.DOCKERHUB_TOKEN || secrets.TEST_DOCKERHUB_TOKEN }}
@@ -599,7 +599,7 @@ jobs:
         name: "Commit and push ${{ matrix.image_types }}/*/* Dockerfile and RootFS (branch ${{ matrix.version_major }})"
         # 'default' or 'minimal' images only and 'Push to production' is checked
         if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.production == 'true' && env.check_update != 0
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v10
         with:
           default_author: user_info
           new_branch: ${{ matrix.version_major }}
@@ -712,7 +712,7 @@ jobs:
 
       -
         name: Commit and push ${{ github.repository }}, branch '${{ matrix.version_major }}'
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v10
         with:
           default_author: user_info
           message: "Update AlmaLinux ${{ matrix.version_major }} - ${{ needs.init-data.outputs.date_stamp }} ${{ needs.init-data.outputs.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."

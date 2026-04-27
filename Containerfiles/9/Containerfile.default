@@ -1,5 +1,5 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:9
-FROM ${SYSBASE} as system-build
+FROM ${SYSBASE} AS system-build
 
 RUN mkdir /mnt/sys-root; \
     dnf install -y \
@@ -87,7 +87,7 @@ RUN if [ "$TARGETPLATFORM" = "linux/386" ]; then \
 fi
 
 # Almalinux default build
-FROM scratch as stage2
+FROM scratch AS stage2
 COPY --from=system-build /mnt/sys-root/ /
 
 RUN systemctl set-default multi-user.target; \
