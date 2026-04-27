@@ -1,5 +1,5 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:8
-FROM ${SYSBASE} as system-build
+FROM ${SYSBASE} AS system-build
 
 RUN mkdir -p /mnt/sys-root; \
     dnf install --installroot /mnt/sys-root coreutils-single glibc-minimal-langpack \
@@ -41,4 +41,4 @@ FROM scratch
 
 COPY --from=system-build /mnt/sys-root/ /
 
-CMD /bin/sh
+CMD ["/bin/sh"]

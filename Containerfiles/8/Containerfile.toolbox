@@ -1,5 +1,5 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:8
-FROM ${SYSBASE} as system-build
+FROM ${SYSBASE} AS system-build
 
 RUN mkdir -p /mnt/sys-root; \
     dnf install --installroot /mnt/sys-root --releasever 8 --setopt install_weak_deps=false --nodocs -y \
@@ -126,7 +126,7 @@ RUN rm /etc/rpm/macros.image-language-conf; \
     ; \
     dnf --installroot /mnt/sys-root clean all;
 
-FROM scratch as stage2
+FROM scratch AS stage2
 
 COPY --from=system-build /mnt/sys-root/ /
 
