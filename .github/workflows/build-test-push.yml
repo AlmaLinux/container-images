@@ -159,9 +159,9 @@ jobs:
             8)
               version_minor=".10" ;;
             9)
-              version_minor=".7"  ;;
+              version_minor=".8"  ;;
             10)
-              version_minor=".1" ;;
+              version_minor=".2" ;;
             10-kitten)
               version_minor= ;;
             *)
