@@ -200,7 +200,7 @@ jobs:
               8|9)
                 platforms="linux/386, ${platforms}" ;;
               10)
-                platforms="linux/amd64/v2, ${platforms}" ;;
+                platforms="linux/386, linux/amd64/v2, ${platforms}" ;;
               10-kitten)
                 platforms="linux/386, linux/riscv64, linux/amd64/v2, ${platforms}" ;;
             esac
