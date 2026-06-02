@@ -85,11 +85,9 @@ Additionally, there is another container image type:
 
 `linux/riscv64` are for AlmaLinux Kitten.
 
-`linux/386` are for AlmaLinux 8 and 9 releases.
-
 To get packages arch, the `rpm -qf --queryformat '%{ARCH}' /etc/almalinux-release` command may be used (except for the `micro` image, where `uname -m` is used instead).
 
-❗ Please, note, `linux/amd64/v2` and `linux/386` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
+❗ Please, note, `linux/amd64/v2` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
 
 The [**containerd image store store**](https://docs.docker.com/storage/containerd/) for Docker Engine together with `buildx` are used to build and push multiple platforms at once.
 
@@ -261,6 +259,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 .
 ├── docker-library-definition.tmpl
 ├── default
+│   ├── 386
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-default-386.tar.gz
 │   ├── amd64
 │   │   ├── Dockerfile
 │   │   └── almalinux-10-default-amd64.tar.gz
@@ -277,6 +278,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 │       ├── Dockerfile
 │       └── almalinux-10-default-s390x.tar.gz
 └── minimal
+    ├── 386
+    │   ├── Dockerfile
+    │   └── almalinux-10-minimal-386.tar.gz
     ├── amd64
     │   ├── Dockerfile
     │   └── almalinux-10-minimal-amd64.tar.gz
@@ -299,6 +303,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 .
 ├── docker-library-definition.tmpl
 ├── default
+│   ├── 386
+│   │   ├── Dockerfile
+│   │   └── almalinux-10-kitten-default-386.tar.gz
 │   ├── amd64
 │   │   ├── Dockerfile
 │   │   └── almalinux-10-kitten-default-amd64.tar.gz
@@ -318,6 +325,9 @@ The `/almalinux` *repository* includes the `latest` tag for AlmaLinux release 9.
 │       ├── Dockerfile
 │       └── almalinux-10-kitten-default-s390x.tar.gz
 └── minimal
+    ├── 386
+    │   ├── Dockerfile
+    │   └── almalinux-10-kitten-minimal-386.tar.gz
     ├── amd64
     │   ├── Dockerfile
     │   └── almalinux-10-kitten-minimal-amd64.tar.gz
@@ -422,7 +432,7 @@ s390x-Directory: {{ .image_type }}/s390x/
 Architectures: amd64, arm64v8, ppc64le, s390x
 ```
 
-❗ Please, note, `linux/amd64/v2` and `linux/386` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
+❗ Please, note, `linux/amd64/v2` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
 
 # How to contribute/help and customize workflow(s)
 
@@ -727,9 +737,9 @@ The command runs inside podman container pulling the most recent `quay.io/almali
 
 #### Step: Set platforms and registries
 
- - Extends `platforms` list with `linux/riscv64` and `linux/amd64/v2` if Kitten
+ - Extends `platforms` list with `linux/386`, `linux/riscv64` and `linux/amd64/v2` if Kitten
 
- - Extends `platforms` list with `linux/amd64/v2` if AlmaLinux 10
+ - Extends `platforms` list with `linux/386` and `linux/amd64/v2` if AlmaLinux 10
 
  - Extends `platforms` list with `linux/386` if AlmaLinux 8 or 9
 
@@ -757,24 +767,24 @@ The successful switch is printed in the docker info:
 #### Step: Checkout *container-images*, branch 'main'
 
 Checkouts *container-images* into branch 'main'. The repository directory is located at `/home/runner/work/container-images/container-images`. Please note, the only last commit is checked out.
-The [actions/checkout@v4](https://github.com/actions/checkout/) is used.
+The [actions/checkout@v6](https://github.com/actions/checkout/) is used.
 
 #### Step: Checkout *container-images*, branch '${version_major}', path '${version_major}'
 
 Checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/${version_major}`.
-The [actions/checkout@v4](https://github.com/actions/checkout/) is used.
+The [actions/checkout@v6](https://github.com/actions/checkout/) is used.
 
 #### Step: Set up QEMU
 
-Installs [QEMU](https://github.com/qemu/qemu) static binaries. The [docker/setup-qemu-action@v3](https://github.com/docker/setup-qemu-action) is used. The QEMU static binaries are required to build different platforms within one machine.
+Installs [QEMU](https://github.com/qemu/qemu) static binaries. The [docker/setup-qemu-action@v4](https://github.com/docker/setup-qemu-action) is used. The QEMU static binaries are required to build different platforms within one machine.
 
 #### Step: Set up Docker Buildx
 
-Sets up Docker [Buildx](https://github.com/docker/buildx). It uses [docker/setup-buildx-action@v3](https://github.com/docker/setup-buildx-action)
+Sets up Docker [Buildx](https://github.com/docker/buildx). It uses [docker/setup-buildx-action@v4](https://github.com/docker/setup-buildx-action)
 
 #### Step: Login to Docker.io
 
-The [docker/login-action@v3](https://github.com/docker/login-action) is used. The following secrets are used:
+The [docker/login-action@v4](https://github.com/docker/login-action) is used. The following secrets are used:
 
 *production* mode:
 - DOCKERHUB_USERNAME
@@ -786,7 +796,7 @@ The [docker/login-action@v3](https://github.com/docker/login-action) is used. Th
 
 #### Step: Login to Quay.io
 
-The [docker/login-action@v3](https://github.com/docker/login-action) is used. The following secrets are used:
+The [docker/login-action@v4](https://github.com/docker/login-action) is used. The following secrets are used:
 
 *production* mode:
 - QUAY_IO_USERNAME
@@ -798,7 +808,7 @@ The [docker/login-action@v3](https://github.com/docker/login-action) is used. Th
 
 #### Step: Login to Ghcr.io
 
-The [docker/login-action@v3](https://github.com/docker/login-action) is used. The following secrets are used:
+The [docker/login-action@v4](https://github.com/docker/login-action) is used. The following secrets are used:
 
 *production* mode:
 - GIT_HUB_USERNAME
@@ -810,7 +820,7 @@ The [docker/login-action@v3](https://github.com/docker/login-action) is used. Th
 
 #### Step: Generate tags and prepare metadata to build and push
 
-The [docker/metadata-action@v5](https://github.com/docker/metadata-action) is used to generate tags, labels and annotations for images. Here is an example of AlmaLinux 8 minimal image's tags:
+The [docker/metadata-action@v6](https://github.com/docker/metadata-action) is used to generate tags, labels and annotations for images. Here is an example of AlmaLinux 8 minimal image's tags:
 ```json
 "tags": [
           "docker.io/***/8-minimal:latest",
@@ -825,7 +835,7 @@ The [docker/metadata-action@v5](https://github.com/docker/metadata-action) is us
 ```
 #### Step: Build images
 
-The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used to build images. This step builds the images from corresponding [`Containerfile`](https://github.com/AlmaLinux/container-images/tree/main/Containerfiles), for specified `env.platforms` and uses tags from the previous step. After the successful building, the images are loaded into docker, but not pushed yet as they need to be tested first. AlmaLinux 8 minimal images `buildx` looks like this:
+The [docker/build-push-action@v7](https://github.com/docker/build-push-action) is used to build images. This step builds the images from corresponding [`Containerfile`](https://github.com/AlmaLinux/container-images/tree/main/Containerfiles), for specified `env.platforms` and uses tags from the previous step. After the successful building, the images are loaded into docker, but not pushed yet as they need to be tested first. AlmaLinux 8 minimal images `buildx` looks like this:
 ```sh
 /usr/bin/docker buildx build --file ./Containerfile.minimal ... \
  --platform linux/386,linux/amd64,linux/ppc64le,linux/s390x,linux/arm64 \
@@ -850,7 +860,7 @@ For `micro` images, the architecture is queried via `uname -m`; for all other ty
 
 #### Step: Push images to Client Library
 
-The [docker/build-push-action@v5](https://github.com/docker/build-push-action) is used. This step pushes built images into *Client Library*. The options are the same as for **Build images** step.
+The [docker/build-push-action@v7](https://github.com/docker/build-push-action) is used. This step pushes built images into *Client Library*. The options are the same as for **Build images** step.
 
 #### Step: Generate Docker Hub README
 
@@ -862,7 +872,7 @@ Generates a `dockerhub-readme.md` file with current supported tags, supported ar
 
 ❗ Skip this step if the image type is 'default' or Docker Hub is not in the registries list.
 
-Uses [peter-evans/dockerhub-description@v4](https://github.com/peter-evans/dockerhub-description) to push the generated README to the Docker Hub repository (e.g. `almalinux/9-minimal`). This keeps the "Supported tags" and other information on Docker Hub in sync with the actual pushed tags. The following secrets are used:
+Uses [peter-evans/dockerhub-description@v5](https://github.com/peter-evans/dockerhub-description) to push the generated README to the Docker Hub repository (e.g. `almalinux/9-minimal`). This keeps the "Supported tags" and other information on Docker Hub in sync with the actual pushed tags. The following secrets are used:
 
 - DOCKERHUB_USERNAME
 - DOCKERHUB_TOKEN
@@ -919,7 +929,7 @@ The change indicates that a new `default` and/or `minimal` container image was p
 
 ❗ The step is skipped if '*Push to production registries*' is not checked (`inputs.production` set to `false`.)
 
-Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commit) to commit and push Dockerfile and RootFS, which were changed and extracted on the previous steps.
+Uses [EndBug/add-and-commit@v10](https://github.com/marketplace/actions/add-commit) to commit and push Dockerfile and RootFS, which were changed and extracted on the previous steps.
 
 The commit message is:
 ```yaml
@@ -979,7 +989,7 @@ ___
 
 #### Step: Checkout almalinux/container-images, branch '${version_major}', path '${version_major}'
 
-The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/container-images` and its subdirectory is named '${version_major}'. All commits for the branch are checkout with `fetch-depth: 0`.
+The [actions/checkout@v6](https://github.com/actions/checkout/) checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/container-images` and its subdirectory is named '${version_major}'. All commits for the branch are checkout with `fetch-depth: 0`.
 
 #### Step: Optimize size of branch the '${version_major}'
 
@@ -992,7 +1002,7 @@ This step is written in bash and is designed to:
 
 #### Step: Commit and push almalinux/container-images, branch '${version_major}'
 
-Uses [EndBug/add-and-commit@v9](https://github.com/marketplace/actions/add-commit) to commit and push Dockerfiles and RootFSs which were prepared on previous step.
+Uses [EndBug/add-and-commit@v10](https://github.com/marketplace/actions/add-commit) to commit and push Dockerfiles and RootFSs which were prepared on previous step.
 The following options are used to push:
 - `--force` - to rewrite history
 - `--set-upstream origin ${version_major}` - to set upstream branch (as new one is orphan)
@@ -1061,11 +1071,11 @@ Job iterates (using matrix) with AlmaLinux all `version_major`, and `image_types
 
 #### Step: Checkout *container-images*, branch '${version_major}'
 
-The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/container-images`. All commits for the branch are checkout with `fetch-depth: 0`.
+The [actions/checkout@v6](https://github.com/actions/checkout/) checkouts *container-images* into branch '${version_major}'. The repository directory is located at `/home/runner/work/container-images/container-images`. All commits for the branch are checkout with `fetch-depth: 0`.
 
 #### Step: Checkout *official-images*, branch 'master'
 
-The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch 'master'. The repository directory is located at `/home/runner/work/container-images/official-images`.
+The [actions/checkout@v6](https://github.com/actions/checkout/) checkouts *container-images* into branch 'master'. The repository directory is located at `/home/runner/work/container-images/official-images`.
 
 That's your fork of [docker-library/official-images](https://github.com/docker-library/official-images) repository.
 
@@ -1079,7 +1089,7 @@ The [chuhlomin/render-template@v1](https://github.com/marketplace/actions/render
 
 #### Step: Upload the definition for *version_major* *image_types*
 
-The step uses [actions/upload-artifact@v4](https://github.com/actions/upload-artifact) to store an artifact generated in the previous step `official-images/library/almalinux.version_major.image_types`. The artifact is named against `version_major` and `image_type`, following the pattern: `definition-${version_major}.${image_types}`.
+The step uses [actions/upload-artifact@v7](https://github.com/actions/upload-artifact) to store an artifact generated in the previous step `official-images/library/almalinux.version_major.image_types`. The artifact is named against `version_major` and `image_type`, following the pattern: `definition-${version_major}.${image_types}`.
 
 Artifacts are used to transfer files between different jobs of the same workflow. The artifact is a zip archive of the file without file-path included.
 
@@ -1091,7 +1101,7 @@ It is also possible to download artifacts via GitHub Action's web interface.
 
 #### Step: Checkout *official-images*, branch 'master'
 
-The [actions/checkout@v4](https://github.com/actions/checkout/) checkouts *container-images* into branch 'master'. The repository directory is located at `/home/runner/work/container-images/official-images`.
+The [actions/checkout@v6](https://github.com/actions/checkout/) checkouts *container-images* into branch 'master'. The repository directory is located at `/home/runner/work/container-images/official-images`.
 
 That's your fork of [docker-library/official-images](https://github.com/docker-library/official-images) repository.
 
@@ -1101,7 +1111,7 @@ The step is written in bash. It uses GitHub CLI to sync the [docker-library-offi
 
 #### Step: Download all definitions
 
-Uses [actions/download-artifact@v4](https://github.com/actions/download-artifact) to download multiple (`merge-multiple: true`) artifacts with generated definitions. The files are saved into the `official-images/library/` directory.
+Uses [actions/download-artifact@v8](https://github.com/actions/download-artifact) to download multiple (`merge-multiple: true`) artifacts with generated definitions. The files are saved into the `official-images/library/` directory.
 
 #### Step: Create head of *official-images/library/almalinux*
 
