@@ -1,5 +1,12 @@
 name: Build, test and push to the Client Library
 
+run-name: >-
+ ${{ github.event_name == 'schedule'
+     && 'Build and test all AlmaLinux versions, push to the testing Library'
+     || format('Build and test AlmaLinux {0}, push to the {1} Library',
+               inputs.version_major == '10-kitten' && 'Kitten 10' || inputs.version_major,
+               inputs.production && 'Client' || 'testing') }}
+
 on:
   workflow_dispatch:
       inputs:

@@ -1,5 +1,8 @@
 name: Publish images to the Docker Library
 
+run-name: >-
+ Publish AlmaLinux images to the Docker Official Library${{ inputs.draft && ' (draft Pull Request)' || '' }}
+
 on:
   workflow_dispatch:
       inputs:
