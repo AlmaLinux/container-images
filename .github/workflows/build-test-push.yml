@@ -22,7 +22,7 @@ on:
           description: 'Send notification to Mattermost'
           required: true
           type: boolean
-          default: false
+          default: true
 
         version_major:
           description: 'AlmaLinux major version'
@@ -98,6 +98,8 @@ env:
 jobs:
   init-data:
     name: Set matrix, prepare variables
+    # Run scheduled workflow only in the AlmaLinux/container-images repository
+    if: github.event_name != 'schedule' || github.repository == 'AlmaLinux/container-images'
     runs-on: ubuntu-24.04
     outputs:
       version_major_matrix: ${{ steps.init-data.outputs.version_major_matrix }}
