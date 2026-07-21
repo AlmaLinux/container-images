@@ -21,6 +21,7 @@ jobs:
     uses: ./.github/workflows/build-test-push.yml
     with:
       version_major: ${{ matrix.version_major }}
+      pungi_repos: false
       production: true
       notify_mattermost: true
       type_default: true

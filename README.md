@@ -689,6 +689,8 @@ The workflow inputs are:
 
 - `version_major` - dropdown 'AlmaLinux major version' with the default value `9`. This is a major number of AlmaLinux version to build images for.
 
+- `pungi_repos` - boolean '*Build from PUNGI pre-release repositories (AlmaLinux 9 and 10 only)*' with the default value `false` (not checked). When checked, the `system-build` stage switches `/etc/yum.repos.d/almalinux-*.repo` of the `SYSBASE` image from the public repositories to the PUNGI pre-release ones (`https://<arch>-pungi-<version_major>.almalinux.dev`), so images can be built before an AlmaLinux version is publicly released. Supported for AlmaLinux 9 and 10 only, the workflow fails fast otherwise.
+
 ### Environment variables which affect all jobs
 
 - `version_latest` - AlmaLinux version for which the `latest` tag is set. Now is set to `9`
@@ -712,6 +714,8 @@ The step sets:
 - `production` - environment variable value based on corresponded input `true` or `false` for workflow dispatch, or with default `false` value for scheduled workflow
 
 - `notify_mattermost` - environment variable value based on corresponded input `true` or `false` for workflow dispatch, or with default `true` value for scheduled workflow
+
+- `pungi_repos` - environment variable value based on corresponded input `true` or `false` for workflow dispatch, or with default `false` value for scheduled workflow. The value is passed to `docker buildx` as the `PUNGI_REPOS` build argument of the **Build images** and **Push images to Client Library** steps
 
 - `date_time_stamp` - in format *%Y%m%d%H%M%S*, used for Mattermost notifications
 
