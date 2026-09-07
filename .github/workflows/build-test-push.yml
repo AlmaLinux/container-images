@@ -236,8 +236,14 @@ jobs:
           # Derive the minor version from the almalinux-release package in the
           # BaseOS repository the images are built from, so the image tags, the
           # release string checked by 'Test images' and the image contents agree.
+          # PUNGI composes (AlmaLinux 9 and 10 only) ship a pre-release
+          # almalinux-release (e.g. 10.3 while repo.almalinux.org still ships 10.2).
           # The version is the same for all architectures, x86_64 is queried.
-          baseos_repo="https://repo.almalinux.org/almalinux/${{ matrix.version_major }}/BaseOS/x86_64/os"
+          if [[ "${{ env.pungi_repos }}" == "true" && "${{ matrix.version_major }}" =~ ^(9|10)$ ]]; then
+            baseos_repo="https://x86-64-pungi-${{ matrix.version_major }}.almalinux.dev/almalinux/${{ matrix.version_major }}/x86_64/latest_result_almalinux/compose/BaseOS/x86_64/os"
+          else
+            baseos_repo="https://repo.almalinux.org/almalinux/${{ matrix.version_major }}/BaseOS/x86_64/os"
+          fi
           primary_href=$(curl -sf "${baseos_repo}/repodata/repomd.xml" | grep -oE 'repodata/[^"]*-primary\.xml\.gz' | head -n 1)
           release=$(curl -sf "${baseos_repo}/${primary_href}" | gunzip \
             | python3 -c 'import re,sys; print(re.search(r"<name>almalinux-release</name>.*?ver=\"([^\"]+)\"", sys.stdin.read(), re.S).group(1))')
