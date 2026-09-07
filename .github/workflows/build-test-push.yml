@@ -196,19 +196,26 @@ jobs:
       -
         name: Prepare AlmaLinux Minor version number
         run: |
-          case ${{ matrix.version_major }} in
-            8)
-              version_minor=".10" ;;
-            9)
-              version_minor=".8"  ;;
-            10)
-              version_minor=".2" ;;
-            10-kitten)
-              version_minor= ;;
-            *)
-              echo "Almalinux ${{ matrix.version_major }} is not supported!" && false
-          esac
-          echo "version_minor=${version_minor}" >> $GITHUB_ENV
+          # Kitten is a rolling OS without a minor version
+          if [[ ${{ matrix.version_major }} == *'kitten'* ]]; then
+            echo "version_minor=" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          # Derive the minor version from the almalinux-release package in the
+          # BaseOS repository the images are built from, so the image tags, the
+          # release string checked by 'Test images' and the image contents agree.
+          # The version is the same for all architectures, x86_64 is queried.
+          baseos_repo="https://repo.almalinux.org/almalinux/${{ matrix.version_major }}/BaseOS/x86_64/os"
+          primary_href=$(curl -sf "${baseos_repo}/repodata/repomd.xml" | grep -oE 'repodata/[^"]*-primary\.xml\.gz' | head -n 1)
+          release=$(curl -sf "${baseos_repo}/${primary_href}" | gunzip \
+            | python3 -c 'import re,sys; print(re.search(r"<name>almalinux-release</name>.*?ver=\"([^\"]+)\"", sys.stdin.read(), re.S).group(1))')
+          if [[ ! "${release}" =~ ^${{ matrix.version_major }}\.[0-9]+$ ]]; then
+            echo "::error::Failed to derive the almalinux-release version from ${baseos_repo}: '${release}'"
+            exit 1
+          fi
+          echo "[Debug] almalinux-release version: ${release}"
+          echo "version_minor=.${release#*.}" >> $GITHUB_ENV
 
       -
         name: Check update

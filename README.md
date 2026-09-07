@@ -597,24 +597,9 @@ version_latest: <version_latest>
 ```
 Where `<version_latest>` is an AlmaLinux version major version, for example `10`.
 
-## To bump AlmaLinux release (*Minor* number)
+## AlmaLinux release (*Minor* number)
 
-If a new AlmaLinux minor release is available, edit the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow file (branch `master`) to set it. To do so, you need the "DeployPrepare AlmaLinux Minor version number" step:
-
-```sh
-          case ${{ inputs.version_major }} in
-            8)
-              version_minor="<8_minor>" ;;
-            9)
-              version_minor="<9_minor>"  ;;
-            10)
-              version_minor="<10_minor>" ;;
-
-```
-
-Where `<8_minor>`, `<9_minor>`, `<10_minor>` are AlmaLinux's corresponding minor versions.
-
-For example Minors are `10`, `4` or `1` for new **8.10**, **9.4** or **10.1** versions respectively.
+The Minor version is not hardcoded. The **Prepare AlmaLinux Minor version number** step of the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow derives it from the `almalinux-release` package version found in the `BaseOS` repository the images are built from (`https://repo.almalinux.org/almalinux/<version_major>/BaseOS/x86_64/os`). Nothing needs to be edited when a new AlmaLinux minor release is published.
 
 ## To change scheduled time
 
@@ -740,7 +725,7 @@ Job proceeds to input `version_major` and iterates with selected `image_types` u
 
 #### Step: Prepare AlmaLinux Minor version number
 
-The step sets AlmaLinux `version_minor` according to set on inputs `version_major`.
+The step sets AlmaLinux `version_minor` (empty for Kitten) from the `almalinux-release` package version read from the `BaseOS` repodata of the repository the images are built from: `https://repo.almalinux.org/almalinux/<version_major>/BaseOS/x86_64/os`. The version is the same for all architectures, so `x86_64` is queried. The step fails if the version can not be derived.
 
 #### Step: Check update
 
