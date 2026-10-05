@@ -29,7 +29,7 @@ jobs:
   prepare-definitions:
 
     name: "${{ matrix.version_major }} ${{ matrix.image_types }} definition preparing"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     strategy:
       fail-fast: false
@@ -108,7 +108,7 @@ jobs:
   push-pr:
     if: inputs.pr
     name: "Create Pull Request with the new definition file"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs:
       - prepare-definitions
 
@@ -192,7 +192,7 @@ jobs:
 
       -
         name: "Commit and push official-images/library/almalinux"
-        uses: EndBug/add-and-commit@v9
+        uses: EndBug/add-and-commit@v11
         with:
           cwd: official-images
           default_author: user_info
