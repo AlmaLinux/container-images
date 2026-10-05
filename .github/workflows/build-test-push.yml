@@ -100,7 +100,7 @@ jobs:
     name: Set matrix, prepare variables
     # Run scheduled workflow only in the AlmaLinux/container-images repository
     if: github.event_name != 'schedule' || github.repository == 'AlmaLinux/container-images'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       version_major_matrix: ${{ steps.init-data.outputs.version_major_matrix }}
       image_types_matrix: ${{ steps.init-data.outputs.image_types_matrix }}
@@ -144,7 +144,7 @@ jobs:
 
   build-test-push:
     name: Deploy ${{ matrix.version_major }} ${{ matrix.image_types }} images
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [init-data]
     strategy:
       fail-fast: false
@@ -619,7 +619,7 @@ jobs:
 
   notify-mattermost:
     name: Mattermost notification
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [init-data, build-test-push]
     if: needs.init-data.outputs.notify_mattermost == 'true'
     strategy:
@@ -668,7 +668,7 @@ jobs:
     # 'default' or 'minimal' images only and 'Push to production' is checked or scheduled run
     if: ( contains(needs.init-data.outputs.image_types_matrix, 'default') || contains(needs.init-data.outputs.image_types_matrix, 'minimal') ) && needs.init-data.outputs.production == 'true'
     name: Optimize size of repository, branch '${{ matrix.version_major }}'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs:
       - init-data
       - build-test-push
