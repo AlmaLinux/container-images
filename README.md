@@ -87,7 +87,7 @@ Additionally, there is another container image type:
 
 To get packages arch, the `rpm -qf --queryformat '%{ARCH}' /etc/almalinux-release` command may be used (except for the `micro` image, where `uname -m` is used instead).
 
-❗ Please, note, `linux/amd64/v2` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
+❗ Please, note, `linux/amd64/v2` (`x86_64_v2`) images are available from the *Client Library* only: `docker.io/almalinux/<type>`, `quay.io/almalinuxorg/<type>` and `ghcr.io/almalinux/<type>`. They are **not** published to the Docker *Official Library* (`docker.io/library/almalinux`, pulled as plain `almalinux`), as the Docker Official Images program has no `amd64/v2` architecture. The `amd64_v2` directories in the release branches hold the RootFS for the *Client Library* only.
 
 The [**containerd image store store**](https://docs.docker.com/storage/containerd/) for Docker Engine together with `buildx` are used to build and push multiple platforms at once.
 
@@ -118,6 +118,12 @@ The following *repositories* are created on all registries ([Docker.io/almalinux
 - `/10-kitten-toolbox`
 
 They are the *Client Library*.
+
+All AlmaLinux 10 and Kitten *repositories* carry the `linux/amd64/v2` (`x86_64_v2`) variant under every tag, select it with `--platform`:
+
+```sh
+docker pull --platform=linux/amd64/v2 docker.io/almalinux/10-minimal:latest
+```
 
 ### Tags
 
@@ -432,7 +438,7 @@ s390x-Directory: {{ .image_type }}/s390x/
 Architectures: amd64, arm64v8, ppc64le, s390x
 ```
 
-❗ Please, note, `linux/amd64/v2` images are pushed to the Docker's *Client Library* only, but not to the *Official Library* .
+❗ Please, note, `linux/amd64/v2` (`x86_64_v2`) images are available from the *Client Library* only: `docker.io/almalinux/<type>`, `quay.io/almalinuxorg/<type>` and `ghcr.io/almalinux/<type>`. They are **not** published to the Docker *Official Library* (`docker.io/library/almalinux`, pulled as plain `almalinux`), as the Docker Official Images program has no `amd64/v2` architecture. The `amd64_v2` directories in the release branches hold the RootFS for the *Client Library* only.
 
 # How to contribute/help and customize workflow(s)
 
