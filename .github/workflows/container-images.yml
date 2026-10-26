@@ -1,0 +1,32 @@
+name: Container Images
+
+run-name: Build and test AlmaLinux 8, 9, 10 and Kitten 10, push to the Client Library
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-test-push:
+    name: AlmaLinux ${{ matrix.version_major == '10-kitten' && 'Kitten 10' || matrix.version_major }}
+    # Production builds of all image types are for the AlmaLinux/container-images repository only
+    if: github.repository == 'AlmaLinux/container-images'
+    strategy:
+      fail-fast: false
+      matrix:
+        version_major:
+          - '10-kitten'
+          - '10'
+          - '9'
+          - '8'
+    uses: ./.github/workflows/build-test-push.yml
+    with:
+      version_major: ${{ matrix.version_major }}
+      production: true
+      notify_mattermost: true
+      type_default: true
+      type_minimal: true
+      type_micro: true
+      type_base: true
+      type_init: true
+      type_toolbox: true
+    secrets: inherit
