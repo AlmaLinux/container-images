@@ -389,7 +389,28 @@ on:
 ...
 ```
 
-Both workflows are triggered manually by the [**workflow_dispatch**](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch) event of GitHub Actions.
+The [`.github/workflows/container-images.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/container-images.yml) workflow is used to **Build, Test and Push** production images of all types for AlmaLinux 8, 9, 10 and Kitten 10 at once. It calls the **Build, test and push to the Client Library** workflow (the [**workflow_call**](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_call) trigger) for each version:
+```yaml
+name: Container Images
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-test-push:
+    if: github.repository == 'AlmaLinux/container-images'
+    strategy:
+      matrix:
+        version_major: ['10-kitten', '10', '9', '8']
+    uses: ./.github/workflows/build-test-push.yml
+    with:
+      version_major: ${{ matrix.version_major }}
+      production: true
+      notify_mattermost: true
+...
+```
+
+All workflows are triggered manually by the [**workflow_dispatch**](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch) event of GitHub Actions.
 
 ### Sourced *Containerfiles*
 
@@ -610,6 +631,8 @@ The workflow is designed to run every day at **04:00 UTC**. To change, edit the 
 ❗ Only AlmaLinux organization members have access to create Pull Requests and publish container images into the Docker *Official Library*.
 
 ❗ **Build, test and push to the Client Library** workflow will work only for your *Client Library*, but not for AlmaLinux-owned ones.
+
+❗ **Container Images** workflow runs only in the `AlmaLinux/container-images` repository, it is skipped in forks.
 
 # Workflows jobs and steps
 
@@ -1012,6 +1035,17 @@ Uses [EndBug/add-and-commit@v10](https://github.com/marketplace/actions/add-comm
 The following options are used to push:
 - `--force` - to rewrite history
 - `--set-upstream origin ${version_major}` - to set upstream branch (as new one is orphan)
+
+## Container Images
+
+The workflow has no inputs. Its single job `AlmaLinux ${version_major}` runs as a matrix over AlmaLinux `10-kitten`, `10`, `9` and `8` and calls the **Build, test and push to the Client Library** workflow with:
+
+- `version_major` - the matrix value
+- `production` - `true`, images are pushed to the production *Client Library*
+- `notify_mattermost` - `true`
+- `type_default`, `type_minimal`, `type_micro`, `type_base`, `type_init`, `type_toolbox` - all `true`
+
+Secrets are inherited by the called workflow. The job is skipped (`if: github.repository == 'AlmaLinux/container-images'`) outside the AlmaLinux organization repository. Each called run goes through the same Jobs and Steps described above as for a workflow dispatch.
 
 ## Publish images to the Docker Library
 

@@ -71,6 +71,38 @@ on:
           type: boolean
           default: true
 
+  # Called by the 'Container Images' workflow (same inputs as workflow_dispatch)
+  workflow_call:
+      inputs:
+        production:
+          required: true
+          type: boolean
+        notify_mattermost:
+          required: true
+          type: boolean
+        version_major:
+          description: 'AlmaLinux major version: 10-kitten, 10, 9 or 8'
+          required: true
+          type: string
+        type_default:
+          required: true
+          type: boolean
+        type_minimal:
+          required: true
+          type: boolean
+        type_micro:
+          required: true
+          type: boolean
+        type_base:
+          required: true
+          type: boolean
+        type_init:
+          required: true
+          type: boolean
+        type_toolbox:
+          required: true
+          type: boolean
+
   schedule:
     # run every day at 04:00 UTC
     - cron:  '00 04 * * *'
