@@ -1,6 +1,26 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:10
 FROM ${SYSBASE} AS system-build
 
+# Switch to the PUNGI pre-release repositories when the PUNGI_REPOS build argument is 'true'
+ARG PUNGI_REPOS=false
+ARG TARGETPLATFORM
+RUN if [ "$PUNGI_REPOS" = "true" ]; then \
+    pungi_src='repo\.almalinux\.org/almalinux'; \
+    case "$TARGETPLATFORM" in \
+    linux/386) pungi_arch=i686; pungi_host=i686; pungi_src='vault\.almalinux\.org' ;; \
+    linux/amd64) pungi_arch=x86_64; pungi_host=x86-64 ;; \
+    linux/amd64/v2) pungi_arch=x86_64_v2; pungi_host=x86-64-v2 ;; \
+    linux/arm64) pungi_arch=aarch64; pungi_host=aarch64 ;; \
+    linux/ppc64le) pungi_arch=ppc64le; pungi_host=ppc64le ;; \
+    linux/s390x) pungi_arch=s390x; pungi_host=s390x ;; \
+    *) echo "PUNGI repositories are not available for the '$TARGETPLATFORM' platform"; exit 1 ;; \
+    esac; \
+    sed -i -e 's/^mirrorlist=/# mirrorlist=/' \
+    -e 's/^# baseurl=/baseurl=/' \
+    -e "s#https://${pungi_src}/\$releasever#https://${pungi_host}-pungi-10.almalinux.dev/almalinux/10/${pungi_arch}/latest_result_almalinux/compose#g" \
+    /etc/yum.repos.d/almalinux-*.repo; \
+fi
+
 RUN mkdir -p /mnt/sys-root; \
     dnf install -y \
     --installroot /mnt/sys-root --releasever 10 --setopt install_weak_deps=false --nodocs \

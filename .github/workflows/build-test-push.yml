@@ -3,9 +3,10 @@ name: Build, test and push to the Client Library
 run-name: >-
  ${{ github.event_name == 'schedule'
      && 'Build and test all AlmaLinux versions, push to the testing Library'
-     || format('Build and test AlmaLinux {0}, push to the {1} Library',
+     || format('Build and test AlmaLinux {0}, push to the {1} Library{2}',
                inputs.version_major == '10-kitten' && 'Kitten 10' || inputs.version_major,
-               inputs.production && 'Client' || 'testing') }}
+               inputs.production && 'Client' || 'testing',
+               inputs.pungi_repos && ' (PUNGI)' || '') }}
 
 on:
   workflow_dispatch:
@@ -34,6 +35,12 @@ on:
             - 10
             - 9
             - 8
+
+        pungi_repos:
+          description: 'Build from PUNGI pre-release repositories (AlmaLinux 9 and 10 only)'
+          required: true
+          type: boolean
+          default: false
 
         type_default:
           description: 'default'
@@ -84,6 +91,11 @@ on:
           description: 'AlmaLinux major version: 10-kitten, 10, 9 or 8'
           required: true
           type: string
+        pungi_repos:
+          description: 'Build from PUNGI pre-release repositories (AlmaLinux 9 and 10 only)'
+          required: false
+          type: boolean
+          default: false
         type_default:
           required: true
           type: boolean
@@ -138,11 +150,27 @@ jobs:
       image_types_matrix: ${{ steps.init-data.outputs.image_types_matrix }}
       production: ${{ steps.init-data.outputs.production }}
       notify_mattermost: ${{ steps.init-data.outputs.notify_mattermost }}
+      pungi_repos: ${{ steps.init-data.outputs.pungi_repos }}
       date_time_stamp: ${{ steps.init-data.outputs.date_time_stamp }}
       date_stamp: ${{ steps.init-data.outputs.date_stamp }}
       time_stamp: ${{ steps.init-data.outputs.time_stamp }}
 
     steps:
+      - name: Validate inputs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # PUNGI pre-release repositories exist for AlmaLinux 9 and 10 only
+          if [ "${{ inputs.pungi_repos }}" = "true" ]; then
+            case "${{ inputs.version_major }}" in
+              9|10)
+                ;;
+              *)
+                echo "[Error] 'pungi_repos' is supported for AlmaLinux 9 and 10 only, not for '${{ inputs.version_major }}'."
+                exit 1
+                ;;
+            esac
+          fi
+
       - name: Set matrix, prepare variables
         id: init-data
         run: |
@@ -154,6 +182,7 @@ jobs:
               echo "version_major_matrix=$(jq -c <<< '["${{ inputs.version_major }}"]')" >> $GITHUB_OUTPUT
               echo "production=${{ inputs.production }}" >> $GITHUB_OUTPUT
               echo "notify_mattermost=${{ inputs.notify_mattermost }}" >> $GITHUB_OUTPUT
+              echo "pungi_repos=${{ inputs.pungi_repos }}" >> $GITHUB_OUTPUT
               ;;
             schedule)
               # Set image types matrix based on the environment variable image_types: '"type1", "type2"'
@@ -161,6 +190,7 @@ jobs:
               echo "version_major_matrix=$(jq -c <<< '[${{ env.versions_list }}]')" >> $GITHUB_OUTPUT
               echo "production=false" >> $GITHUB_OUTPUT       # only testing if scheduled
               echo "notify_mattermost=true" >> $GITHUB_OUTPUT # always notify if scheduled
+              echo "pungi_repos=false" >> $GITHUB_OUTPUT      # never PUNGI if scheduled
               ;;
           esac
 
@@ -191,6 +221,7 @@ jobs:
       time_stamp: ${{ needs.init-data.outputs.time_stamp }}
       notify_mattermost: ${{ needs.init-data.outputs.notify_mattermost }}
       production: ${{ needs.init-data.outputs.production }}
+      pungi_repos: ${{ needs.init-data.outputs.pungi_repos }}
 
     steps:
       -
@@ -205,8 +236,14 @@ jobs:
           # Derive the minor version from the almalinux-release package in the
           # BaseOS repository the images are built from, so the image tags, the
           # release string checked by 'Test images' and the image contents agree.
+          # PUNGI composes (AlmaLinux 9 and 10 only) ship a pre-release
+          # almalinux-release (e.g. 10.3 while repo.almalinux.org still ships 10.2).
           # The version is the same for all architectures, x86_64 is queried.
-          baseos_repo="https://repo.almalinux.org/almalinux/${{ matrix.version_major }}/BaseOS/x86_64/os"
+          if [[ "${{ env.pungi_repos }}" == "true" && "${{ matrix.version_major }}" =~ ^(9|10)$ ]]; then
+            baseos_repo="https://x86-64-pungi-${{ matrix.version_major }}.almalinux.dev/almalinux/${{ matrix.version_major }}/x86_64/latest_result_almalinux/compose/BaseOS/x86_64/os"
+          else
+            baseos_repo="https://repo.almalinux.org/almalinux/${{ matrix.version_major }}/BaseOS/x86_64/os"
+          fi
           primary_href=$(curl -sf "${baseos_repo}/repodata/repomd.xml" | grep -oE 'repodata/[^"]*-primary\.xml\.gz' | head -n 1)
           release=$(curl -sf "${baseos_repo}/${primary_href}" | gunzip \
             | python3 -c 'import re,sys; print(re.search(r"<name>almalinux-release</name>.*?ver=\"([^\"]+)\"", sys.stdin.read(), re.S).group(1))')
@@ -380,6 +417,8 @@ jobs:
           context: "{{defaultContext}}:Containerfiles/${{ matrix.version_major }}"
           file: ./Containerfile.${{ matrix.image_types }}
           platforms: ${{ env.platforms }}
+          build-args: |
+            PUNGI_REPOS=${{ env.pungi_repos }}
           push: false
           load: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -437,6 +476,8 @@ jobs:
           context: "{{defaultContext}}:Containerfiles/${{ matrix.version_major }}"
           file: ./Containerfile.${{ matrix.image_types }}
           platforms: ${{ env.platforms }}
+          build-args: |
+            PUNGI_REPOS=${{ env.pungi_repos }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
 
@@ -498,6 +539,7 @@ jobs:
           # Mattermost message heading
           cat << 'EOF'> ${{ matrix.version_major }}_mattermost.md
           **AlmaLinux OS ${{ matrix.version_major }}${{ env.version_minor }}** Container Image, build `${{ needs.init-data.outputs.date_time_stamp }}`, generated by the [GitHub Action](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          ${{ env.pungi_repos == 'true' && ':warning: Built from **PUNGI pre-release repositories**' || '' }}
 
           Platforms:
 

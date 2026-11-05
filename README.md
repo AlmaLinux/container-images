@@ -599,7 +599,7 @@ Where `<version_latest>` is an AlmaLinux version major version, for example `10`
 
 ## AlmaLinux release (*Minor* number)
 
-The Minor version is not hardcoded. The **Prepare AlmaLinux Minor version number** step of the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow derives it from the `almalinux-release` package version found in the `BaseOS` repository the images are built from (`https://repo.almalinux.org/almalinux/<version_major>/BaseOS/x86_64/os`). Nothing needs to be edited when a new AlmaLinux minor release is published.
+The Minor version is not hardcoded. The **Prepare AlmaLinux Minor version number** step of the [`.github/workflows/build-test-push.yml`](https://github.com/AlmaLinux/container-images/blob/main/.github/workflows/build-test-push.yml) workflow derives it from the `almalinux-release` package version found in the `BaseOS` repository the images are built from (`https://repo.almalinux.org/almalinux/<version_major>/BaseOS/x86_64/os`, or the PUNGI compose when `pungi_repos` is checked). Nothing needs to be edited when a new AlmaLinux minor release is published.
 
 ## To change scheduled time
 
@@ -689,6 +689,8 @@ The workflow inputs are:
 
 - `version_major` - dropdown 'AlmaLinux major version' with the default value `9`. This is a major number of AlmaLinux version to build images for.
 
+- `pungi_repos` - boolean '*Build from PUNGI pre-release repositories (AlmaLinux 9 and 10 only)*' with the default value `false` (not checked). When checked, the `system-build` stage switches `/etc/yum.repos.d/almalinux-*.repo` of the `SYSBASE` image from the public repositories to the PUNGI pre-release ones (`https://<arch>-pungi-<version_major>.almalinux.dev`), so images can be built before an AlmaLinux version is publicly released. Supported for AlmaLinux 9 and 10 only, the workflow fails fast otherwise.
+
 ### Environment variables which affect all jobs
 
 - `version_latest` - AlmaLinux version for which the `latest` tag is set. Now is set to `9`
@@ -713,6 +715,8 @@ The step sets:
 
 - `notify_mattermost` - environment variable value based on corresponded input `true` or `false` for workflow dispatch, or with default `true` value for scheduled workflow
 
+- `pungi_repos` - environment variable value based on corresponded input `true` or `false` for workflow dispatch or call, or with default `false` value for scheduled workflow. The value is passed to `docker buildx` as the `PUNGI_REPOS` build argument of the **Build images** and **Push images to Client Library** steps, and makes the **Prepare AlmaLinux Minor version number** step derive `version_minor` from the PUNGI compose instead of `repo.almalinux.org`
+
 - `date_time_stamp` - in format *%Y%m%d%H%M%S*, used for Mattermost notifications
 
 - `date_stamp` - in format *YYYYMMDD*, used in image tags
@@ -725,7 +729,7 @@ Job proceeds to input `version_major` and iterates with selected `image_types` u
 
 #### Step: Prepare AlmaLinux Minor version number
 
-The step sets AlmaLinux `version_minor` (empty for Kitten) from the `almalinux-release` package version read from the `BaseOS` repodata of the repository the images are built from: `https://repo.almalinux.org/almalinux/<version_major>/BaseOS/x86_64/os`. The version is the same for all architectures, so `x86_64` is queried. The step fails if the version can not be derived.
+The step sets AlmaLinux `version_minor` (empty for Kitten) from the `almalinux-release` package version read from the `BaseOS` repodata of the repository the images are built from: `https://repo.almalinux.org/almalinux/<version_major>/BaseOS/x86_64/os`, or, when `pungi_repos` is `true` (AlmaLinux 9 and 10 only), the PUNGI compose `https://x86-64-pungi-<version_major>.almalinux.dev/almalinux/<version_major>/x86_64/latest_result_almalinux/compose/BaseOS/x86_64/os`. A PUNGI compose ships a pre-release `almalinux-release` (for example `10.3` while `repo.almalinux.org` still ships `10.2`), so a PUNGI build produces `10.3` images while scheduled builds keep producing `10.2` ones. The step fails if the version can not be derived.
 
 #### Step: Check update
 
@@ -1026,6 +1030,7 @@ The following options are used to push:
 The workflow has no inputs. Its single job `AlmaLinux ${version_major}` runs as a matrix over AlmaLinux `10-kitten`, `10`, `9` and `8` and calls the **Build, test and push to the Client Library** workflow with:
 
 - `version_major` - the matrix value
+- `pungi_repos` - `false`, images are always built from the public repositories
 - `production` - `true`, images are pushed to the production *Client Library*
 - `notify_mattermost` - `true`
 - `type_default`, `type_minimal`, `type_micro`, `type_base`, `type_init`, `type_toolbox` - all `true`
