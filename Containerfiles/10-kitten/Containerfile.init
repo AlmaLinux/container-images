@@ -1,7 +1,7 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:10-kitten
 FROM ${SYSBASE} AS system-build
 
-RUN mkdir /mnt/sys-root; \
+RUN set -e; mkdir /mnt/sys-root; \
     dnf install -y \
 #    --nogpgcheck --repoid=AppStream --repoid=BaseOS \
 #    --repofrompath='BaseOS,https://repo.almalinux.org/almalinux/10/BaseOS/$basearch/os/' \

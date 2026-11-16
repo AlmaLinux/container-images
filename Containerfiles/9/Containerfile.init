@@ -1,7 +1,7 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:9
 FROM ${SYSBASE} AS system-build
 
-RUN mkdir /mnt/sys-root; \
+RUN set -e; mkdir /mnt/sys-root; \
     dnf install -y \
 #    --nogpgcheck --repoid=AppStream --repoid=BaseOS \
 #    --repofrompath='BaseOS,https://repo.almalinux.org/almalinux/9/BaseOS/$basearch/os/' \
