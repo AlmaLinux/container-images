@@ -71,6 +71,14 @@ RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/
     cd /mnt/sys-root/etc ; \
     ln -s ../usr/share/zoneinfo/UTC localtime ;
 
+ARG TARGETPLATFORM
+RUN if [ "$TARGETPLATFORM" = "linux/386" ]; then \
+    sed -i -e 's/mirrorlist=/# mirrorlist=/g' \
+    -e 's/# baseurl=/baseurl=/g' \
+    -e 's/repo\.almalinux\.org\/almalinux/vault.almalinux.org/g' \
+    -e 's/\$basearch/i686/g' /mnt/sys-root/etc/yum.repos.d/*.repo; \
+fi
+
 # Toolbox specific
 RUN set -e; rm /etc/rpm/macros.image-language-conf; \
     dnf install -y 'dnf-command(config-manager)' ; \
@@ -140,14 +148,6 @@ RUN set -e; rm /etc/rpm/macros.image-language-conf; \
     dnf --installroot /mnt/sys-root clean all;
 
 RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles.conf
-
-ARG TARGETPLATFORM
-RUN if [ "$TARGETPLATFORM" = "linux/386" ]; then \
-    sed -i -e 's/mirrorlist=/# mirrorlist=/g' \
-    -e 's/# baseurl=/baseurl=/g' \
-    -e 's/repo\.almalinux\.org\/almalinux/vault.almalinux.org/g' \
-    -e 's/\$basearch/i686/g' /mnt/sys-root/etc/yum.repos.d/*.repo; \
-fi
 
 FROM scratch AS stage2
 
