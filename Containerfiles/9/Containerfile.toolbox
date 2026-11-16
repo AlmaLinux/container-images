@@ -79,6 +79,8 @@ RUN rm /etc/rpm/macros.image-language-conf; \
     epel-release \
     'dnf-command(config-manager)' \
     ; \
+    # dnf resolves the gpgkey path of the EPEL repository outside of the installroot
+    cp /mnt/sys-root/etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-* /etc/pki/rpm-gpg/ ; \
     dnf config-manager --installroot /mnt/sys-root --enable \
     $(dnf repolist --all | grep -i -e crb -e powertools -e codeready | grep -v -i -e debug -e source -e eus -e virt -e rhui | awk '{print $1}') \
     ; \
@@ -132,7 +134,6 @@ RUN rm /etc/rpm/macros.image-language-conf; \
     xz \
     zip \
     systemd-udev \
-    default-fonts-core \
     liberation-fonts \
     make \
     ; \
