@@ -58,9 +58,7 @@ RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/
     sed -i "/sgx/d" /mnt/sys-root/etc/group- ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/gshadow- ; \
     cd /mnt/sys-root/etc ; \
-    ln -s ../usr/share/zoneinfo/UTC localtime ; \
-    cd /mnt/sys-root/etc/systemd/system ; \
-    ln -s /usr/lib/systemd/system/multi-user.target default.target
+    ln -s ../usr/share/zoneinfo/UTC localtime
 
 RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles.conf
 

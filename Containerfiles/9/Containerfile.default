@@ -69,8 +69,6 @@ RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/
     chmod 700 /mnt/sys-root/var/cache/private ; \
     chmod 700 /mnt/sys-root/var/lib/private ; \
     chmod 700 /mnt/sys-root/run/cryptsetup ; \
-    groupadd -R '/mnt/sys-root/' -r -p '!*' -g 996 sgx && groupadd -R '/mnt/sys-root/' -r -p '!*' -g 995 systemd-oom ; \
-    useradd -R '/mnt/sys-root/' -r -c 'systemd Userspace OOM Killer' -g 995 -u 995 -s '/usr/sbin/nologin' -M -d '/' systemd-oom ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/group- ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/gshadow- ; \
     cd /mnt/sys-root/etc ; \
