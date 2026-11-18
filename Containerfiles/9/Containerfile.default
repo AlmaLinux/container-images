@@ -1,7 +1,7 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:9
 FROM ${SYSBASE} AS system-build
 
-RUN mkdir /mnt/sys-root; \
+RUN set -e; mkdir /mnt/sys-root; \
     dnf install -y \
     --installroot /mnt/sys-root \
     --releasever 9 \

@@ -1,7 +1,7 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:8
 FROM ${SYSBASE} AS system-build
 
-RUN mkdir -p /mnt/sys-root; \
+RUN set -e; mkdir -p /mnt/sys-root; \
     dnf install --installroot /mnt/sys-root coreutils-single glibc-minimal-langpack \
     --releasever 8 --setopt install_weak_deps=false --nodocs -y; \
     dnf --installroot /mnt/sys-root clean all;

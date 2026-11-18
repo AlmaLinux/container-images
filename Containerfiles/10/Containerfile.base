@@ -1,7 +1,7 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:10
 FROM ${SYSBASE} AS system-build
 
-RUN mkdir -p /mnt/sys-root; \
+RUN set -e; mkdir -p /mnt/sys-root; \
     dnf install -y \
     --installroot /mnt/sys-root --releasever 10 --setopt install_weak_deps=false --nodocs \
     almalinux-release \

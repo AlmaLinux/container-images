@@ -1,7 +1,7 @@
 ARG SYSBASE=quay.io/almalinuxorg/almalinux:8
 FROM ${SYSBASE} AS system-build
 
-RUN mkdir -p /mnt/sys-root; \
+RUN set -e; mkdir -p /mnt/sys-root; \
     dnf install --installroot /mnt/sys-root --releasever 8 --setopt install_weak_deps=false --nodocs -y \
     almalinux-release \
     bash \
@@ -59,13 +59,15 @@ RUN if [ "$TARGETPLATFORM" = "linux/386" ]; then \
 fi
 
 # Toolbox specific
-RUN rm /etc/rpm/macros.image-language-conf; \
+RUN set -e; rm /etc/rpm/macros.image-language-conf; \
     dnf install -y 'dnf-command(config-manager)' ; \
     dnf install -y \
     --installroot /mnt/sys-root --releasever 8 --setopt install_weak_deps=false --nodocs \
     epel-release \
     'dnf-command(config-manager)' \
     ; \
+    # dnf resolves the gpgkey path of the EPEL repository outside of the installroot
+    cp -n /mnt/sys-root/etc/pki/rpm-gpg/* /etc/pki/rpm-gpg/ ; \
     dnf config-manager --installroot /mnt/sys-root --enable \
     $(dnf repolist --all | grep -i -e crb -e powertools -e codeready | grep -v -i -e debug -e source -e eus -e virt -e rhui | awk '{print $1}') \
     ; \
@@ -121,7 +123,7 @@ RUN rm /etc/rpm/macros.image-language-conf; \
     systemd-udev \
     liberation-fonts \
     python3 \
-    pulseaudio \
+    $([ "$TARGETPLATFORM" = "linux/s390x" ] || echo pulseaudio) \
     make \
     ; \
     dnf --installroot /mnt/sys-root clean all;
