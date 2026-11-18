@@ -24,7 +24,7 @@ RUN set -e; mkdir -p /mnt/sys-root; \
     yum \
     ;
 # Additional hacks for kickstart file and backward compatable support
-RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/cache/dnf/* /mnt/sys-root/var/lib/dnf/repos; \
+RUN set -e; rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/cache/dnf/* /mnt/sys-root/var/lib/dnf/repos; \
     rm -rf /mnt/sys-root/var/log/hawkey.log /mnt/sys-root/boot /mnt/sys-root/dev/null /mnt/sys-root/var/log/*  /mnt/sys-root/run/blkid ; \
     mkdir -p /mnt/sys-root/run/lock; \
     # generate build time file for compatibility with CentOS  /mnt/sys-root/run/* /mnt/sys-root/var/lib/dnf/history*
@@ -132,7 +132,7 @@ FROM scratch AS stage2
 
 COPY --from=system-build /mnt/sys-root/ /
 
-RUN systemctl set-default multi-user.target; \
+RUN set -e; systemctl set-default multi-user.target; \
     systemctl mask systemd-remount-fs.service \
     dev-hugepages.mount \
     sys-fs-fuse-connections.mount \
