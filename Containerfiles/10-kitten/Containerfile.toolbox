@@ -72,11 +72,13 @@ RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/
     ln -s ../usr/share/zoneinfo/UTC localtime ;
 
 # Toolbox specific
+ARG TARGETPLATFORM
 RUN set -e; rm /etc/rpm/macros.image-language-conf; \
     dnf install -y 'dnf-command(config-manager)' ; \
     dnf install -y \
     --installroot /mnt/sys-root --releasever 10 --setopt install_weak_deps=false --nodocs \
-    epel-release \
+    # EPEL is not available for riscv64
+    $([ "$TARGETPLATFORM" = "linux/riscv64" ] || echo epel-release) \
     'dnf-command(config-manager)' \
     ; \
     # dnf resolves the gpgkey path of the EPEL repository outside of the installroot
