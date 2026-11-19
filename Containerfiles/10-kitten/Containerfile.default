@@ -38,7 +38,7 @@ RUN set -e; mkdir /mnt/sys-root; \
     krb5-libs ; \
     dnf --installroot /mnt/sys-root clean all;
 # Additional hacks for kickstart file and backward compatable support   /mnt/sys-root/var/lib/dnf/history*
-RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/usr/share/i18n/charmaps /mnt/sys-root/usr/share/i18n/locales ; \
+RUN set -e; rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/usr/share/i18n/charmaps /mnt/sys-root/usr/share/i18n/locales ; \
     rm -rf /mnt/sys-root/var/cache/dnf/* /mnt/sys-root/var/lib/dnf/repos /mnt/sys-root/boot /mnt/sys-root/dev/null ; \
     rm -rf /mnt/sys-root/var/log/hawkey.log /mnt/sys-root/var/log/*  ; \
     mkdir -p /mnt/sys-root/run/lock; \
@@ -64,14 +64,12 @@ RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/
     touch /mnt/sys-root/etc/resolv.conf; \
     touch /mnt/sys-root/etc/hostname
 # AL9 specific hacks
-RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/sys-root/var/lib/systemd/coredump /mnt/sys-root/var/lib/tpm2-tss/system/keystore ;\
+RUN set -e; mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/sys-root/var/lib/systemd/coredump /mnt/sys-root/var/lib/tpm2-tss/system/keystore ;\
     mkdir -p /mnt/sys-root/run/cryptsetup /mnt/sys-root/run/lock/subsys /mnt/sys-root/run/log /mnt/sys-root/run/user /mnt/sys-root/run/tpm2-tss/eventlog ;\
     mkdir -p /mnt/sys-root/run/systemd/ask-password /mnt/sys-root/run/systemd/machines /mnt/sys-root/run/systemd/seats /mnt/sys-root/run/systemd/sessions /mnt/sys-root/run/systemd/shutdown /mnt/sys-root/run/systemd/users ;\
     chmod 700 /mnt/sys-root/var/cache/private ; \
     chmod 700 /mnt/sys-root/var/lib/private ; \
     chmod 700 /mnt/sys-root/run/cryptsetup ; \
-    groupadd -R '/mnt/sys-root/' -r -p '!*' -g 996 sgx && groupadd -R '/mnt/sys-root/' -r -p '!*' -g 995 systemd-oom ; \
-    useradd -R '/mnt/sys-root/' -r -c 'systemd Userspace OOM Killer' -g 995 -u 995 -s '/usr/sbin/nologin' -M -d '/' systemd-oom ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/group- ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/gshadow- ; \
     cd /mnt/sys-root/etc ; \
@@ -83,7 +81,7 @@ RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles
 FROM scratch AS stage2
 COPY --from=system-build /mnt/sys-root/ /
 
-RUN systemctl set-default multi-user.target; \
+RUN set -e; systemctl set-default multi-user.target; \
     systemctl mask systemd-remount-fs.service \
     dev-hugepages.mount \
     sys-fs-fuse-connections.mount \

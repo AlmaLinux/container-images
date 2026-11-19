@@ -26,7 +26,7 @@ RUN set -e; mkdir /mnt/sys-root; \
     krb5-libs ; \
     dnf --installroot /mnt/sys-root clean all;
 # Additional hacks for kickstart file and backward compatible support
-RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/cache/dnf /mnt/sys-root/var/lib/dnf/repos; \
+RUN set -e; rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/cache/dnf /mnt/sys-root/var/lib/dnf/repos; \
     rm -rf /mnt/sys-root/var/lib/dnf/history* /mnt/sys-root/var/log/hawkey.log /mnt/sys-root/boot /mnt/sys-root/dev/null /mnt/sys-root/run/*; \
     mkdir -p /mnt/sys-root/run/lock; \
     # generate build time file for compatibility with CentOS
@@ -58,9 +58,7 @@ RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/
     sed -i "/sgx/d" /mnt/sys-root/etc/group- ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/gshadow- ; \
     cd /mnt/sys-root/etc ; \
-    ln -s ../usr/share/zoneinfo/UTC localtime ; \
-    cd /mnt/sys-root/etc/systemd/system ; \
-    ln -s /usr/lib/systemd/system/multi-user.target default.target
+    ln -s ../usr/share/zoneinfo/UTC localtime
 
 RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles.conf
 
